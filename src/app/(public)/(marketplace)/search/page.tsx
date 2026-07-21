@@ -94,21 +94,26 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
   }
 
   // 2. Database query: Fetch active and matching providers
-  const allProviders = await db.pharmacy.findMany({
-    where: {
-      status: "APPROVED",
-      deletedAt: null,
-    },
-    include: {
-      services: {
-        where: { isActive: true },
-        orderBy: { displayOrder: "asc" },
+  let allProviders: any[] = [];
+  try {
+    allProviders = await db.pharmacy.findMany({
+      where: {
+        status: "APPROVED",
+        deletedAt: null,
       },
-      availability: true,
-      blockedDates: true,
-      subscription: true,
-    },
-  });
+      include: {
+        services: {
+          where: { isActive: true },
+          orderBy: { displayOrder: "asc" },
+        },
+        availability: true,
+        blockedDates: true,
+        subscription: true,
+      },
+    });
+  } catch (err) {
+    console.error("Search db query error:", err);
+  }
 
   // Calculate dynamic slot availability and earliest appointment today on server
   const processedProviders = await Promise.all(
@@ -118,11 +123,11 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
 
       // Check if blocked today
       const isBlocked = p.blockedDates.some(
-        (b) => new Date(b.date).toLocaleDateString("en-CA") === todayStr
+        (b: any) => new Date(b.date).toLocaleDateString("en-CA") === todayStr
       );
 
       // Check if open today
-      const avail = p.availability.find((a) => a.dayOfWeek === dayOfWeek);
+      const avail = p.availability.find((a: any) => a.dayOfWeek === dayOfWeek);
       const isOpenToday = !isBlocked && !!avail;
 
       // Check subscription
@@ -163,7 +168,9 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
       }
 
       // Generate consistent rating (future review count placeholder)
-      const charSum = p.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const charSum = p.id
+        .split("")
+        .reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
       const ratingScore = parseFloat((4.5 + (charSum % 5) / 10).toFixed(1));
       const ratingCount = 50 + (charSum % 150);
 
@@ -188,7 +195,7 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
         earliestAppointmentDate: earliestAppointmentToday,
         ratingScore,
         ratingCount,
-        services: p.services.map((s) => ({
+        services: p.services.map((s: any) => ({
           id: s.id,
           name: s.name,
           description: s.description,

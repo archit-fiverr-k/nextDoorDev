@@ -17,21 +17,32 @@ interface ServiceBookingPageProps {
 export async function generateMetadata({ params }: ServiceBookingPageProps): Promise<Metadata> {
   const { pharmacySlug, categorySlug, serviceSlug } = params;
 
-  const [pharmacy, category, service] = await Promise.all([
-    db.pharmacy.findUnique({
-      where: { slug: pharmacySlug },
-    }),
-    db.category.findUnique({
-      where: { slug: categorySlug, deleted: false },
-    }),
-    db.service.findFirst({
-      where: {
-        serviceSlug: serviceSlug,
-        pharmacy: { slug: pharmacySlug },
-        isActive: true,
-      },
-    }),
-  ]);
+  let pharmacy = null;
+  let category = null;
+  let service = null;
+
+  try {
+    const res = await Promise.all([
+      db.pharmacy.findUnique({
+        where: { slug: pharmacySlug },
+      }),
+      db.category.findUnique({
+        where: { slug: categorySlug, deleted: false },
+      }),
+      db.service.findFirst({
+        where: {
+          serviceSlug: serviceSlug,
+          pharmacy: { slug: pharmacySlug },
+          isActive: true,
+        },
+      }),
+    ]);
+    pharmacy = res[0];
+    category = res[1];
+    service = res[2];
+  } catch (err) {
+    console.error("ServiceBookingPage metadata DB error:", err);
+  }
 
   if (!pharmacy || !category || !service) return {};
 
@@ -53,39 +64,51 @@ export async function generateMetadata({ params }: ServiceBookingPageProps): Pro
 export default async function ServiceBookingPage({ params }: ServiceBookingPageProps) {
   const { pharmacySlug, categorySlug, serviceSlug } = params;
 
-  // Maintenance mode guard
-  const settings = await db.systemSetting.findFirst();
-  if (settings?.isMaintenanceMode) {
-    const session = await auth();
-    const isAdmin =
-      session?.user?.role === "super_admin" || session?.user?.role === "platform_admin";
-    if (!isAdmin) {
-      redirect("/maintenance");
-    }
-  }
+  let settings = null;
+  let pharmacy = null;
+  let category = null;
+  let service = null;
 
-  // Fetch pharmacy, category, and service
-  const [pharmacy, category, service] = await Promise.all([
-    db.pharmacy.findUnique({
-      where: { slug: pharmacySlug },
-      include: {
-        services: {
-          where: { isActive: true },
-          orderBy: { displayOrder: "asc" },
+  try {
+    // Maintenance mode guard
+    settings = await db.systemSetting.findFirst();
+    if (settings?.isMaintenanceMode) {
+      const session = await auth();
+      const isAdmin =
+        session?.user?.role === "super_admin" || session?.user?.role === "platform_admin";
+      if (!isAdmin) {
+        redirect("/maintenance");
+      }
+    }
+
+    // Fetch pharmacy, category, and service
+    const res = await Promise.all([
+      db.pharmacy.findUnique({
+        where: { slug: pharmacySlug },
+        include: {
+          services: {
+            where: { isActive: true },
+            orderBy: { displayOrder: "asc" },
+          },
         },
-      },
-    }),
-    db.category.findUnique({
-      where: { slug: categorySlug, deleted: false },
-    }),
-    db.service.findFirst({
-      where: {
-        serviceSlug: serviceSlug,
-        pharmacy: { slug: pharmacySlug },
-        isActive: true,
-      },
-    }),
-  ]);
+      }),
+      db.category.findUnique({
+        where: { slug: categorySlug, deleted: false },
+      }),
+      db.service.findFirst({
+        where: {
+          serviceSlug: serviceSlug,
+          pharmacy: { slug: pharmacySlug },
+          isActive: true,
+        },
+      }),
+    ]);
+    pharmacy = res[0];
+    category = res[1];
+    service = res[2];
+  } catch (err) {
+    console.error("ServiceBookingPage DB error:", err);
+  }
 
   if (!pharmacy || !category || !service) {
     notFound();

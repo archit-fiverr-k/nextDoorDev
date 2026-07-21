@@ -31,11 +31,22 @@ const pharmacyFirstConditions = [
 ];
 
 export default async function MarketplaceLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  let session = null;
+  try {
+    session = await auth();
+  } catch (err) {
+    console.error("Auth session error in layout:", err);
+  }
   const user = session?.user;
 
   // Fetch settings for trust bar ticker carousel
-  const settings = await db.systemSetting.findFirst();
+  let settings = null;
+  try {
+    settings = await db.systemSetting.findFirst();
+  } catch (err) {
+    console.error("System settings DB error in layout:", err);
+  }
+
   const defaultTicker = [
     "Official UK Healthcare Directory - Search Verified CQC Compliant Partners",
   ];

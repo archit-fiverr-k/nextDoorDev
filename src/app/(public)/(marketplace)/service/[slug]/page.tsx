@@ -28,16 +28,21 @@ interface ServiceDetailsPageProps {
 
 // 1. Dynamic SEO Metadata Architecture
 export async function generateMetadata({ params }: ServiceDetailsPageProps): Promise<Metadata> {
-  const service = await db.service.findUnique({
-    where: { id: params.slug },
-    include: {
-      pharmacy: {
-        select: {
-          name: true,
+  let service = null;
+  try {
+    service = await db.service.findUnique({
+      where: { id: params.slug },
+      include: {
+        pharmacy: {
+          select: {
+            name: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Service metadata DB error:", err);
+  }
 
   if (!service) {
     return {
@@ -53,18 +58,23 @@ export async function generateMetadata({ params }: ServiceDetailsPageProps): Pro
 
 export default async function ServiceDetailsPage({ params }: ServiceDetailsPageProps) {
   // Fetch service details along with the offering pharmacy branch
-  const service = await db.service.findUnique({
-    where: { id: params.slug },
-    include: {
-      pharmacy: {
-        include: {
-          availability: {
-            orderBy: { dayOfWeek: "asc" },
+  let service = null;
+  try {
+    service = await db.service.findUnique({
+      where: { id: params.slug },
+      include: {
+        pharmacy: {
+          include: {
+            availability: {
+              orderBy: { dayOfWeek: "asc" },
+            },
           },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("ServiceDetailsPage DB error:", err);
+  }
 
   // Verify the service exists, is active, and is offered by an approved pharmacy
   if (!service || !service.isActive || service.pharmacy.status !== "APPROVED") {
