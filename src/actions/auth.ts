@@ -32,24 +32,30 @@ export async function loginAction(data: { email: string; password?: string }) {
     });
 
     // Audit Log for Login
-    const superAdmin = await db.superAdmin.findUnique({ where: { email: data.email } });
-    const platformAdmin = await db.platformAdmin.findUnique({ where: { email: data.email } });
-    const pharmacy = await db.pharmacy.findUnique({ where: { email: data.email } });
+    try {
+      const superAdmin = await db.superAdmin.findUnique({ where: { email: data.email } });
+      const platformAdmin = await db.platformAdmin.findUnique({ where: { email: data.email } });
+      const pharmacy = await db.pharmacy.findUnique({ where: { email: data.email } });
 
-    const userId = superAdmin?.id || platformAdmin?.id || pharmacy?.id || "";
-    const pharmacyId = pharmacy?.id || null;
+      const userId = superAdmin?.id || platformAdmin?.id || pharmacy?.id || "";
+      const pharmacyId = pharmacy?.id || null;
 
-    await db.auditLog.create({
-      data: {
-        userId,
-        userEmail: data.email,
-        pharmacyId,
-        action: "LOGIN",
-        entityName: "UserSession",
-        entityId: userId,
-        changes: { status: "success" },
-      },
-    });
+      if (userId) {
+        await db.auditLog.create({
+          data: {
+            userId,
+            userEmail: data.email,
+            pharmacyId,
+            action: "LOGIN",
+            entityName: "UserSession",
+            entityId: userId,
+            changes: { status: "success" },
+          },
+        });
+      }
+    } catch (auditErr) {
+      console.error("Audit log notice:", auditErr);
+    }
 
     return { success: true };
   } catch (error: any) {
@@ -58,29 +64,9 @@ export async function loginAction(data: { email: string; password?: string }) {
       error.name === "RedirectError" ||
       error.digest?.startsWith("NEXT_REDIRECT")
     ) {
-      // Re-fetch since it is a success redirect path
-      const superAdmin = await db.superAdmin.findUnique({ where: { email: data.email } });
-      const platformAdmin = await db.platformAdmin.findUnique({ where: { email: data.email } });
-      const pharmacy = await db.pharmacy.findUnique({ where: { email: data.email } });
-
-      const userId = superAdmin?.id || platformAdmin?.id || pharmacy?.id || "";
-      const pharmacyId = pharmacy?.id || null;
-
-      await db.auditLog.create({
-        data: {
-          userId,
-          userEmail: data.email,
-          pharmacyId,
-          action: "LOGIN",
-          entityName: "UserSession",
-          entityId: userId,
-          changes: { status: "success" },
-        },
-      });
-
       return { success: true };
     }
-    return { success: false, error: "Invalid credentials" };
+    return { success: false, error: error.message || "Invalid credentials" };
   }
 }
 
