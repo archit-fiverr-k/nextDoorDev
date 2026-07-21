@@ -10,6 +10,10 @@ const envSchema = z.object({
     .min(15, "AUTH_SECRET must be at least 15 characters")
     .default("super-secret-auth-key-for-local-development-only"),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  NEXT_PUBLIC_SUPABASE_URL: z.string().default("https://qwivfvyuninzmhifqwxp.supabase.co"),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z
+    .string()
+    .default("sb_publishable_iamWoZto9O-uNyYMLYocqQ_uvEmQlEC"),
   RESEND_API_KEY: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
