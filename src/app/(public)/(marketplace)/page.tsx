@@ -41,21 +41,26 @@ export const revalidate = 0; // Dynamic database loading
 
 export default async function HomePage() {
   // Query approved pharmacies from database for Featured Section
-  const approvedProviders = await db.pharmacy.findMany({
-    where: {
-      status: "APPROVED",
-      deletedAt: null,
-    },
-    include: {
-      services: {
-        where: {
-          status: "ACTIVE",
-        },
-        take: 3,
+  let approvedProviders: any[] = [];
+  try {
+    approvedProviders = await db.pharmacy.findMany({
+      where: {
+        status: "APPROVED",
+        deletedAt: null,
       },
-    },
-    take: 3,
-  });
+      include: {
+        services: {
+          where: {
+            status: "ACTIVE",
+          },
+          take: 3,
+        },
+      },
+      take: 3,
+    });
+  } catch (err) {
+    console.error("Database connection notice on homepage:", err);
+  }
 
   return (
     <div className="w-full bg-white text-slate-900 antialiased dark:bg-zinc-950 dark:text-zinc-50">

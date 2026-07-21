@@ -69,27 +69,35 @@ export default async function ServicesSearchPage({ searchParams }: ServicesPageP
   };
 
   // Fetch count and paginated items concurrently
-  const [totalResults, paginatedServices] = await Promise.all([
-    db.service.count({ where: whereClause }),
-    db.service.findMany({
-      where: whereClause,
-      include: {
-        pharmacy: {
-          select: {
-            name: true,
-            slug: true,
-            address: true,
-            brandColor: true,
+  let totalResults = 0;
+  let paginatedServices: any[] = [];
+  try {
+    const res = await Promise.all([
+      db.service.count({ where: whereClause }),
+      db.service.findMany({
+        where: whereClause,
+        include: {
+          pharmacy: {
+            select: {
+              name: true,
+              slug: true,
+              address: true,
+              brandColor: true,
+            },
           },
         },
-      },
-      orderBy: {
-        price: "asc",
-      },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-  ]);
+        orderBy: {
+          price: "asc",
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    totalResults = res[0];
+    paginatedServices = res[1];
+  } catch (err) {
+    console.error("Database connection notice on services page:", err);
+  }
 
   const totalPages = Math.ceil(totalResults / pageSize) || 1;
   const currentPage = Math.min(page, totalPages);

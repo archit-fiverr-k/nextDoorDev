@@ -18,14 +18,19 @@ interface DynamicServicePageProps {
 // 1. DYNAMIC SEO METADATA ENGINE
 // =========================================================================
 export async function generateMetadata({ params }: DynamicServicePageProps): Promise<Metadata> {
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { slug: params.tenantId },
-    include: {
-      services: {
-        where: { isActive: true },
+  let pharmacy = null;
+  try {
+    pharmacy = await db.pharmacy.findUnique({
+      where: { slug: params.tenantId },
+      include: {
+        services: {
+          where: { isActive: true },
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Metadata DB error:", err);
+  }
 
   if (!pharmacy || pharmacy.status !== "APPROVED" || pharmacy.deletedAt) {
     return {
@@ -85,18 +90,23 @@ export async function generateMetadata({ params }: DynamicServicePageProps): Pro
 // =========================================================================
 export default async function DynamicServicePage({ params }: DynamicServicePageProps) {
   // Query pharmacy and its active services & availability
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { slug: params.tenantId },
-    include: {
-      availability: {
-        orderBy: { dayOfWeek: "asc" },
+  let pharmacy = null;
+  try {
+    pharmacy = await db.pharmacy.findUnique({
+      where: { slug: params.tenantId },
+      include: {
+        availability: {
+          orderBy: { dayOfWeek: "asc" },
+        },
+        services: {
+          where: { isActive: true },
+          orderBy: { displayOrder: "asc" },
+        },
       },
-      services: {
-        where: { isActive: true },
-        orderBy: { displayOrder: "asc" },
-      },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("DynamicServicePage DB error:", err);
+  }
 
   if (!pharmacy || pharmacy.status !== "APPROVED" || pharmacy.deletedAt) {
     notFound();

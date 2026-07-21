@@ -13,9 +13,14 @@ interface PublicBookingPageProps {
 }
 
 export async function generateMetadata({ params }: PublicBookingPageProps): Promise<Metadata> {
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { slug: params.pharmacySlug },
-  });
+  let pharmacy = null;
+  try {
+    pharmacy = await db.pharmacy.findUnique({
+      where: { slug: params.pharmacySlug },
+    });
+  } catch (err) {
+    console.error("Booking metadata DB error:", err);
+  }
 
   if (!pharmacy) return {};
 
@@ -35,31 +40,41 @@ export default async function PublicBookingPage({ params }: PublicBookingPagePro
   const { pharmacySlug } = params;
   const session = await auth();
 
-  // Maintenance mode guard
-  const settings = await db.systemSetting.findFirst();
-  if (settings?.isMaintenanceMode) {
-    const isAdmin =
-      session?.user?.role === "super_admin" || session?.user?.role === "platform_admin";
-    if (!isAdmin) {
-      redirect("/maintenance");
-    }
-  }
+  let settings = null;
+  let pharmacy = null;
+  let categories: any[] = [];
 
-  const [pharmacy, categories] = await Promise.all([
-    db.pharmacy.findUnique({
-      where: { slug: pharmacySlug },
-      include: {
-        services: {
-          where: { isActive: true },
-          orderBy: { createdAt: "asc" },
+  try {
+    // Maintenance mode guard
+    settings = await db.systemSetting.findFirst();
+    if (settings?.isMaintenanceMode) {
+      const isAdmin =
+        session?.user?.role === "super_admin" || session?.user?.role === "platform_admin";
+      if (!isAdmin) {
+        redirect("/maintenance");
+      }
+    }
+
+    const res = await Promise.all([
+      db.pharmacy.findUnique({
+        where: { slug: pharmacySlug },
+        include: {
+          services: {
+            where: { isActive: true },
+            orderBy: { createdAt: "asc" },
+          },
         },
-      },
-    }),
-    db.category.findMany({
-      where: { deleted: false, status: "ACTIVE" },
-      orderBy: { displayOrder: "asc" },
-    }),
-  ]);
+      }),
+      db.category.findMany({
+        where: { deleted: false, status: "ACTIVE" },
+        orderBy: { displayOrder: "asc" },
+      }),
+    ]);
+    pharmacy = res[0];
+    categories = res[1];
+  } catch (err) {
+    console.error("PublicBookingPage DB error:", err);
+  }
 
   if (!pharmacy) {
     redirect(`/book/${pharmacySlug}/suspended`);

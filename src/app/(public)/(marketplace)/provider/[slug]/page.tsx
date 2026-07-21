@@ -25,9 +25,14 @@ interface ProviderPageProps {
 
 // 1. Dynamic SEO Metadata Architecture
 export async function generateMetadata({ params }: ProviderPageProps): Promise<Metadata> {
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { slug: params.slug },
-  });
+  let pharmacy = null;
+  try {
+    pharmacy = await db.pharmacy.findUnique({
+      where: { slug: params.slug },
+    });
+  } catch (err) {
+    console.error("Provider metadata DB error:", err);
+  }
 
   if (!pharmacy) {
     return {
@@ -43,18 +48,23 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
 
 export default async function ProviderDetailsPage({ params }: ProviderPageProps) {
   // Fetch pharmacy details with active services and weekly availability schedule
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { slug: params.slug },
-    include: {
-      services: {
-        where: { isActive: true },
-        orderBy: { name: "asc" },
+  let pharmacy = null;
+  try {
+    pharmacy = await db.pharmacy.findUnique({
+      where: { slug: params.slug },
+      include: {
+        services: {
+          where: { isActive: true },
+          orderBy: { displayOrder: "asc" },
+        },
+        availability: {
+          orderBy: { dayOfWeek: "asc" },
+        },
       },
-      availability: {
-        orderBy: { dayOfWeek: "asc" },
-      },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("ProviderDetailsPage DB error:", err);
+  }
 
   if (!pharmacy || pharmacy.status !== "APPROVED") {
     notFound();

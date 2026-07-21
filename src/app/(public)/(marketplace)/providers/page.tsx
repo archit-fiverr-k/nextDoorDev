@@ -29,38 +29,43 @@ export default async function ProvidersSearchPage({ searchParams }: ProvidersPag
   const pageSize = 6;
 
   // 1. Fetch all approved pharmacies matching name & location
-  const allApprovedPharmacies = await db.pharmacy.findMany({
-    where: {
-      status: "APPROVED",
-      AND: [
-        query
-          ? {
-              name: {
-                contains: query,
-                mode: "insensitive",
-              },
-            }
-          : {},
-        location
-          ? {
-              address: {
-                contains: location,
-                mode: "insensitive",
-              },
-            }
-          : {},
-      ],
-    },
-    include: {
-      services: {
-        where: { isActive: true },
-        take: 3,
+  let allApprovedPharmacies: any[] = [];
+  try {
+    allApprovedPharmacies = await db.pharmacy.findMany({
+      where: {
+        status: "APPROVED",
+        AND: [
+          query
+            ? {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              }
+            : {},
+          location
+            ? {
+                address: {
+                  contains: location,
+                  mode: "insensitive",
+                },
+              }
+            : {},
+        ],
       },
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+      include: {
+        services: {
+          where: { isActive: true },
+          take: 3,
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+  } catch (err) {
+    console.error("Database connection notice on providers page:", err);
+  }
 
   // 2. Perform virtual type filtering in JS
   let filtered = allApprovedPharmacies;
@@ -267,7 +272,7 @@ export default async function ProvidersSearchPage({ searchParams }: ProvidersPag
                             Popular Services
                           </span>
                           <div className="flex flex-wrap gap-1">
-                            {pharmacy.services.map((service) => (
+                            {pharmacy.services.map((service: any) => (
                               <span
                                 key={service.id}
                                 className="text-slate-750 inline-flex items-center rounded-lg border border-slate-200/60 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-300 sm:text-[10px]"
