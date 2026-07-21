@@ -1,0 +1,552 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TenantStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  REJECTED
+  RESCHEDULE_REQUESTED
+}
+
+enum CommunicationType {
+  EMAIL
+  SMS
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+}
+
+model SuperAdmin {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  isFirstLogin Boolean  @default(true) @map("is_first_login")
+  impersonatingId String? @map("impersonating_id") @db.Uuid
+
+  @@map("super_admins")
+}
+
+model PlatformAdmin {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  isFirstLogin Boolean  @default(true) @map("is_first_login")
+
+  canManagePharmacies Boolean @default(true) @map("can_manage_pharmacies")
+  canManageSettings   Boolean @default(false) @map("can_manage_settings")
+  canViewAuditLogs    Boolean @default(false) @map("can_view_audit_logs")
+  canManageBookings   Boolean @default(false) @map("can_manage_bookings")
+  isDeveloper         Boolean @default(false) @map("is_developer")
+  canManageIntegrations Boolean @default(false) @map("can_manage_integrations")
+  canViewCommsLog       Boolean @default(false) @map("can_view_comms_log")
+  canManageAdmins       Boolean @default(false) @map("can_manage_admins")
+
+  @@map("platform_admins")
+}
+
+model Pharmacy {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String       @unique
+  logoUrl      String?      @map("logo_url")
+  displayName  String?      @map("display_name")
+  brandColor   String?      @map("brand_color")
+  status       TenantStatus @default(PENDING)
+  email        String       @unique
+  phone        String
+  address      String
+  passwordHash String       @map("password_hash")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  isFirstLogin Boolean      @default(true) @map("is_first_login")
+
+  // Clinic Profile Extended Settings
+  website        String?
+  facebookUrl    String?      @map("facebook_url")
+  twitterUrl     String?      @map("twitter_url")
+  instagramUrl   String?      @map("instagram_url")
+  linkedinUrl    String?      @map("linkedin_url")
+  googleMapsUrl  String?      @map("google_maps_url") @db.Text
+  description    String?      @db.Text
+  welcomeMessage String?      @map("welcome_message") @db.Text
+  gallery        String[]     @default([])
+  seoTitle       String?      @map("seo_title")
+  seoDescription String?      @map("seo_description") @db.Text
+
+  // Booking Engine Configuration
+  bufferTime        Int          @default(0) @map("buffer_time") // 0, 5, 10, 15, 30 mins
+  maxBookingsPerSlot Int          @default(1) @map("max_bookings_per_slot") // booking slot limit
+  maxAdvanceDays     Int          @default(60) @map("max_advance_days") // max days in advance
+  minNoticeHours     Int          @default(2) @map("min_notice_hours") // min lead hours notice
+
+  services          Service[]
+  availability      Availability[]
+  blockedDates      BlockedDate[]
+  customers         Customer[]
+  appointments      Appointment[]
+  crmNotes          CRMNote[]
+  communicationsLog CommunicationsLog[]
+  auditLogs         AuditLog[]
+  staff             Staff[]
+
+  latitude          Float?        @map("latitude")
+  longitude         Float?        @map("longitude")
+  postcode          String?       @map("postcode")
+  city              String?       @map("city")
+  deletedAt         DateTime?     @map("deleted_at")
+  providerCategoryId String?      @map("provider_category_id") @db.Uuid
+  healthcareCategoryId String?    @map("healthcare_category_id") @db.Uuid
+  providerCategory  Category?     @relation("ProviderCategory", fields: [providerCategoryId], references: [id], onDelete: SetNull)
+  healthcareCategory Category?    @relation("HealthcareCategory", fields: [healthcareCategoryId], references: [id], onDelete: SetNull)
+
+  subscription      Subscription?
+  subscriptionHistory SubscriptionHistory[]
+
+  @@map("pharmacies")
+}
+
+model Service {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId  String   @map("pharmacy_id") @db.Uuid
+  name        String
+  description String?
+  duration    Int
+  price       Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Extended Service Fields
+  category     String?      @default("General")
+  prepNotes    String?      @map("prep_notes") @db.Text
+  instructions String?      @db.Text
+  displayOrder Int          @default(0) @map("display_order")
+  status       String       @default("ACTIVE") // ACTIVE, DISABLED, ARCHIVED
+  color        String?      @default("#3b82f6") // Accent color
+  imageUrl     String?      @map("image_url")
+
+  pharmacy     Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  categoryId   String?      @map("category_id") @db.Uuid
+  serviceCategory Category?  @relation("ServiceCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  serviceSlug  String?      @map("service_slug")
+
+  @@index([pharmacyId])
+  @@map("services")
+}
+
+model Availability {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String   @map("pharmacy_id") @db.Uuid
+  dayOfWeek  Int      @map("day_of_week") // 0 (Sunday) to 6 (Saturday)
+  openTime   String   @map("open_time")
+  closeTime  String   @map("close_time")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacyId, dayOfWeek])
+  @@index([pharmacyId])
+  @@map("availability")
+}
+
+model BlockedDate {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String   @map("pharmacy_id") @db.Uuid
+  date       DateTime @db.Date
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@map("blocked_dates")
+}
+
+model Customer {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId   String?   @map("pharmacy_id") @db.Uuid
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  email        String
+  phone        String
+  dateOfBirth  DateTime? @map("date_of_birth") @db.Date
+  passwordHash String?   @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Patient Tags
+  tags        String?
+
+  // Patient Portal Extended Fields
+  gender                  String?
+  address                 String?   @db.Text
+  profilePhotoUrl         String?   @map("profile_photo_url")
+  emergencyContactName    String?   @map("emergency_contact_name")
+  emergencyContactPhone   String?   @map("emergency_contact_phone")
+  emailNotifications      Boolean   @default(true)  @map("email_notifications")
+  smsNotifications        Boolean   @default(false) @map("sms_notifications")
+  whatsappNotifications   Boolean   @default(false) @map("whatsapp_notifications")
+  emailVerified           Boolean   @default(false) @map("email_verified")
+  emailVerificationToken  String?   @map("email_verification_token")
+  emailVerificationExpiry DateTime? @map("email_verification_expiry")
+
+  pharmacy          Pharmacy?            @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]
+  crmNotes          CRMNote[]
+  communicationsLog CommunicationsLog[]
+  notifications     PatientNotification[]
+
+  deletedAt         DateTime?            @map("deleted_at")
+  isActive          Boolean              @default(true) @map("is_active")
+
+  @@unique([pharmacyId, email])
+  @@index([pharmacyId])
+  @@map("customers")
+}
+
+model Appointment {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId   String            @map("pharmacy_id") @db.Uuid
+  customerId   String            @map("customer_id") @db.Uuid
+  serviceId    String            @map("service_id") @db.Uuid
+  startTime    DateTime          @map("start_time")
+  endTime      DateTime          @map("end_time")
+  status       AppointmentStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([customerId])
+  @@index([serviceId])
+  @@map("appointments")
+}
+
+model CRMNote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId  String   @map("pharmacy_id") @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  note        String   @db.Text
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Note type & tags
+  type        String   @default("CLINICAL") // CLINICAL, INTERNAL
+  tags        String?
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([customerId])
+  @@map("crm_notes")
+}
+
+model CommunicationsLog {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String            @map("pharmacy_id") @db.Uuid
+  customerId String            @map("customer_id") @db.Uuid
+  type       CommunicationType
+  subject    String?
+  content    String            @db.Text
+  recipient  String
+  status     String
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([customerId])
+  @@map("communications_log")
+}
+
+model AuditLog {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String?     @map("pharmacy_id") @db.Uuid
+  userId     String?     @map("user_id") @db.Uuid
+  userEmail  String?     @map("user_email")
+  action     AuditAction
+  entityName String      @map("entity_name")
+  entityId   String      @map("entity_id")
+  changes    Json?
+  ipAddress  String?     @map("ip_address")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@map("audit_logs")
+}
+
+model BookingOtp {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("booking_otps")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("password_reset_tokens")
+}
+
+model SystemSetting {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  isMaintenanceMode  Boolean  @default(false) @map("is_maintenance_mode")
+  announcementBanner String?  @map("announcement_banner") @db.Text
+  trustMetrics       Json?    @map("trust_metrics") @default("[]")
+  trustTabs          Json?    @map("trust_tabs") @default("[]")
+  trustTicker        Json?    @map("trust_ticker") @default("[]")
+  trustTickerTitle   String?  @map("trust_ticker_title") @default("Trust Verification:")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  platformName                 String   @default("NextDoorClinic") @map("platform_name")
+  logoUrl                      String?  @map("logo_url")
+  supportEmail                 String   @default("support@nextdoorclinic.com") @map("support_email")
+  timezone                     String   @default("UTC")
+  defaultLanguage              String   @default("en") @map("default_language")
+  passwordMinLength            Int      @default(8) @map("password_min_length")
+  passwordRequireNumbers       Boolean  @default(true) @map("password_require_numbers")
+  passwordRequireSymbols       Boolean  @default(true) @map("password_require_symbols")
+  sessionTimeoutMinutes        Int      @default(60) @map("session_timeout_minutes")
+  defaultBufferTime            Int      @default(15) @map("default_buffer_time")
+  defaultBookingLimit          Int      @default(1) @map("default_booking_limit")
+  defaultApprovalMode          String   @default("AUTOMATIC") @map("default_approval_mode")
+  isEmailNotificationsEnabled  Boolean  @default(true) @map("is_email_notifications_enabled")
+  isSmsNotificationsEnabled    Boolean  @default(false) @map("is_sms_notifications_enabled")
+  stripePublishableKey         String?  @map("stripe_publishable_key")
+  stripeSecretKey              String?  @map("stripe_secret_key")
+  stripeWebhookSecret          String?  @map("stripe_webhook_secret")
+  stripeMode                   String   @default("TEST") @map("stripe_mode")
+  googleMapsApiKey             String?  @map("google_maps_api_key")
+  smtpHost                     String?  @map("smtp_host")
+  smtpPort                     Int?     @map("smtp_port")
+  smtpUsername                 String?  @map("smtp_username")
+  smtpPassword                 String?  @map("smtp_password")
+  smtpEncryption               String?  @map("smtp_encryption")
+  recaptchaSiteKey             String?  @map("recaptcha_site_key")
+  recaptchaSecretKey           String?  @map("recaptcha_secret_key")
+  isRecaptchaEnabled           Boolean  @default(false) @map("is_recaptcha_enabled")
+  twilioAccountSid             String?  @map("twilio_account_sid")
+  twilioAuthToken              String?  @map("twilio_auth_token")
+  twilioPhoneNumber            String?  @map("twilio_phone_number")
+  twilioWhatsappNumber         String?  @map("twilio_whatsapp_number")
+
+  @@map("system_settings")
+}
+
+model Staff {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId   String   @map("pharmacy_id") @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("pharmacist") // reception, pharmacist, manager, custom
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  pharmacy     Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@map("staff")
+}
+
+model PatientNotification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  type       String   // BOOKING_CONFIRMED | BOOKING_PENDING | BOOKING_CANCELLED | BOOKING_REJECTED | RESCHEDULE | REMINDER | GENERAL
+  title      String
+  message    String   @db.Text
+  isRead     Boolean  @default(false) @map("is_read")
+  link       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("patient_notifications")
+}
+
+model Subscription {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId          String   @unique @map("pharmacy_id") @db.Uuid
+  plan                String   // MONTHLY, YEARLY, TRIAL
+  status              String   // ACTIVE, EXPIRED, CANCELLED, GRACE_PERIOD, FAILED_PAYMENT
+  startDate           DateTime @map("start_date")
+  endDate             DateTime @map("end_date")
+  trialEndDate        DateTime? @map("trial_end_date")
+  cancelAtPeriodEnd   Boolean  @default(false) @map("cancel_at_period_end")
+  failedPaymentsCount Int      @default(0) @map("failed_payments_count")
+  gracePeriodEnd      DateTime? @map("grace_period_end")
+  stripeSubscriptionId String? @map("stripe_subscription_id")
+  stripeCustomerId    String?  @map("stripe_customer_id")
+  stripePriceId       String?  @map("stripe_price_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  pharmacy            Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model SubscriptionHistory {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String   @map("pharmacy_id") @db.Uuid
+  action     String   // CREATE, RENEW, UPGRADE, DOWNGRADE, CANCEL, PAYMENT_FAILED, PAYMENT_SUCCESS
+  plan       String
+  amount     Decimal? @db.Decimal(10, 2)
+  details    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  pharmacy   Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_histories")
+}
+
+model Category {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String   @unique
+  type         String   // PROVIDER, HEALTHCARE, SERVICE
+  description  String?  @db.Text
+  status       String   @default("ACTIVE") // ACTIVE, INACTIVE
+  displayOrder Int      @default(0) @map("display_order")
+  icon         String?
+  color        String?
+  imageUrl     String?  @map("image_url")
+  deleted      Boolean  @default(false) @map("deleted")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  pharmaciesProvider Pharmacy[] @relation("ProviderCategory")
+  pharmaciesHealthcare Pharmacy[] @relation("HealthcareCategory")
+  servicesService Service[] @relation("ServiceCategory")
+
+  @@map("service_categories")
+}
+
+model CmsPage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String   @unique // terms, privacy, cookie, about, contact
+  title          String
+  content        String   @db.Text
+  seoTitle       String?  @map("seo_title")
+  seoDescription String?  @map("seo_description") @db.Text
+  seoKeywords    String?  @map("seo_keywords")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("cms_pages")
+}
+
+model CmsFaq {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  question     String
+  answer       String   @db.Text
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("cms_faqs")
+}
+
+model EmailTemplate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique // PROVIDER_APPROVAL, PROVIDER_REJECTION, BOOKING_CONFIRMATION, etc.
+  subject   String
+  body      String   @db.Text
+  variables String   // comma-separated list of variables e.g. "providerName, loginUrl"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+model SearchAnalytics {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query          String
+  detectedType   String?  // POSTCODE, CITY, SERVICE, CURRENT_LOCATION
+  timestamp      DateTime @default(now()) @map("timestamp")
+  resultsCount   Int      @default(0) @map("results_count")
+  searchTimeMs   Int      @default(0) @map("search_time_ms")
+  converted      Boolean  @default(false) @map("converted") // did they book?
+  bookingId      String?  @map("booking_id") @db.Uuid
+  sessionToken   String?  @map("session_token")
+
+  @@index([query])
+  @@index([timestamp])
+  @@map("search_analytics")
+}
+
+model SearchCallbackRequest {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  phone       String
+  email       String?
+  postcode    String
+  serviceId   String?  @map("service_id") @db.Uuid
+  notes       String?  @db.Text
+  status      String   @default("PENDING") // PENDING, RESOLVED
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("search_callback_requests")
+}
+
+model SearchNotificationWaitlist {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email       String
+  postcode    String
+  radiusMiles Int      @default(10) @map("radius_miles")
+  serviceId   String?  @map("service_id") @db.Uuid
+  status      String   @default("PENDING") // PENDING, NOTIFIED
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("search_notification_waitlist")
+}
