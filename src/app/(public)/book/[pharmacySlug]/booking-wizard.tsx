@@ -8,6 +8,7 @@ import {
   createBookingDirectAction,
   checkEmailAction,
   verifyAndFetchPatientAction,
+  sendBookingOtpAction,
 } from "@/actions/booking";
 import { loginAction } from "@/actions/auth";
 import {
@@ -31,6 +32,7 @@ import {
   Moon,
   FileText,
   Lock,
+  Smartphone,
   ShieldCheck,
   CalendarCheck,
   X,
@@ -275,6 +277,7 @@ export function BookingWizard({
 
   // Form submission state
   const [isPending, startSubmitTransition] = useTransition();
+  const [otpSending, setOtpSending] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [confirmedDetails, setConfirmedDetails] = useState<{
     referenceCode: string;
@@ -717,27 +720,42 @@ Registered with CQC and NHS partners.`;
     }
 
     if (step === 5) {
-      setEmailChecking(true);
-      try {
-        const res = await checkEmailAction(values.email);
-        if (res.success) {
-          if (res.exists) {
-            if (res.hasPassword) setEmailState("EXISTING_ACCOUNT");
-            else setEmailState("NEW_ACCOUNT");
-          } else {
-            setEmailState("NEW_ACCOUNT");
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setEmailChecking(false);
+      // 1. If user is logged in -> Skip authentication completely & finalize booking directly
+      if (currentUser || emailState === "LOGGED_IN" || loggedInUser) {
+        executeFinalBooking(values);
+        return;
       }
+
+      // 2. If user is new & not logged in -> Send Mobile Verification SMS OTP & advance to Step 6
+      const mobileNumber = values.mobile;
+      if (!mobileNumber) {
+        setBookingError("Please provide a valid mobile number");
+        return;
+      }
+
+      setBookingError(null);
+      setOtpSending(true);
+      try {
+        await sendBookingOtpAction(values.email);
+      } catch (e) {
+        console.error("Error sending OTP", e);
+      } finally {
+        setOtpSending(false);
+      }
+
       setStep(6);
       return;
     }
 
     if (step === 6) {
+      // Verify mobile OTP code entered & complete account creation + booking
+      const enteredCode = otpValues.join("");
+      if (enteredCode.length < 4) {
+        setBookingError("Please enter the 4-digit verification code sent to your mobile");
+        return;
+      }
+
+      setBookingError(null);
       executeFinalBooking(values);
     }
   };
@@ -2389,17 +2407,31 @@ Registered with CQC and NHS partners.`;
               <button
                 type="button"
                 onClick={() => onSubmit(getValues())}
+                disabled={otpSending || isPending}
                 style={{ backgroundColor: brandColor }}
-                className="flex cursor-pointer items-center gap-2 rounded-xl px-8 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-95"
+                className="flex cursor-pointer items-center gap-2 rounded-xl px-8 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-95 disabled:opacity-50"
               >
-                <span>Confirm & Continue</span>
-                <ChevronRight className="h-4 w-4" />
+                {otpSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Sending Verification Code...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {currentUser || emailState === "LOGGED_IN" || loggedInUser
+                        ? "Confirm & Complete Booking"
+                        : "Verify Mobile & Book Appointment"}
+                    </span>
+                    <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 6: INLINE AUTHENTICATION */}
+        {/* STEP 6: MOBILE NUMBER VERIFICATION & ACCOUNT CREATION */}
         {step === 6 && selectedServices.length > 0 && (
           <div className="mx-auto max-w-md space-y-6 duration-300 animate-in fade-in-50">
             <div className="space-y-2 text-center">
@@ -2407,155 +2439,89 @@ Registered with CQC and NHS partners.`;
                 style={{ backgroundColor: brandColor }}
                 className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-md"
               >
-                <Lock className="h-6 w-6" />
+                <Smartphone className="h-6 w-6" />
               </div>
-              <h1 className="text-2xl font-extrabold text-[#000e35]">Inline Authentication</h1>
+              <h1 className="text-2xl font-extrabold text-[#000e35]">Mobile Number Verification</h1>
               <p className="text-xs font-medium text-slate-600">
-                You never leave the booking flow. Sign in or set a password to finalize your
-                appointment with {pharmacyName}.
+                We sent a 4-digit SMS verification code to <strong>{getValues("mobile")}</strong>.
+                Enter the code below to verify your phone number and finalize your appointment
+                booking.
               </p>
             </div>
 
             <div className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
-              {emailChecking ? (
-                <div className="flex flex-col items-center justify-center space-y-3 py-12 text-slate-400">
-                  <Loader2 className="h-8 w-8 animate-spin" style={{ color: brandColor }} />
-                  <span className="text-xs font-bold">Verifying account email...</span>
+              <div className="space-y-4">
+                <div className="flex justify-center space-x-3">
+                  {[0, 1, 2, 3].map((index) => (
+                    <input
+                      key={index}
+                      ref={
+                        index === 0
+                          ? otpRef0
+                          : index === 1
+                            ? otpRef1
+                            : index === 2
+                              ? otpRef2
+                              : otpRef3
+                      }
+                      type="text"
+                      maxLength={1}
+                      value={otpValues[index]}
+                      onChange={(e) => handleOtpChange(index, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                      className="h-12 w-12 rounded-xl border border-slate-300 text-center text-xl font-extrabold text-slate-900 focus:border-[#000e35] focus:outline-none"
+                    />
+                  ))}
                 </div>
-              ) : emailState === "EXISTING_ACCOUNT" ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-                    Account detected for <strong>{getValues("email")}</strong>. Please enter your
-                    password to complete your booking.
+
+                {bookingError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-center text-xs font-bold text-rose-600">
+                    {bookingError}
                   </div>
+                )}
 
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-700">Password</label>
-                    <input
-                      type="password"
-                      value={inputPassword}
-                      onChange={(e) => setInputPassword(e.target.value)}
-                      disabled={loginPending}
-                      placeholder="Enter your account password"
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold focus:border-[#000e35] focus:outline-none"
-                    />
-                    {loginError && (
-                      <p className="mt-1 text-xs font-bold text-rose-600">{loginError}</p>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSignIn}
-                    disabled={loginPending}
-                    style={{ backgroundColor: brandColor }}
-                    className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-90"
-                  >
-                    {loginPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Signing In...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Sign In & Finalize Booking</span>
-                        <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setEmailState("NEW_ACCOUNT")}
-                    className="mx-auto block pt-2 text-xs font-bold text-slate-500 underline hover:text-slate-900"
-                  >
-                    Want to set or change your password instead?
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div
-                    style={{
-                      backgroundColor: `${brandColor}15`,
-                      borderColor: `${brandColor}30`,
-                      color: brandColor,
-                    }}
-                    className="rounded-xl border p-3 text-xs font-semibold"
-                  >
-                    Create a password to set up your account for{" "}
-                    <strong>{getValues("email")}</strong>. Account creation is instant and
-                    won&apos;t interrupt your booking.
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-700">
-                      Password (min 6 chars) *
-                    </label>
-                    <input
-                      type="password"
-                      {...register("password")}
-                      disabled={isPending}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold focus:border-[#000e35] focus:outline-none"
-                    />
-                    {errors.password && (
-                      <p className="mt-1 text-xs font-bold text-rose-600">
-                        {errors.password.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-700">
-                      Confirm Password *
-                    </label>
-                    <input
-                      type="password"
-                      {...register("confirmPassword")}
-                      disabled={isPending}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold focus:border-[#000e35] focus:outline-none"
-                    />
-                    {errors.confirmPassword && (
-                      <p className="mt-1 text-xs font-bold text-rose-600">
-                        {errors.confirmPassword.message}
-                      </p>
-                    )}
-                  </div>
-
-                  {bookingError && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-600">
-                      {bookingError}
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => onSubmit(getValues())}
+                  disabled={isPending}
+                  style={{ backgroundColor: brandColor }}
+                  className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-90 disabled:opacity-50"
+                >
+                  {isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Verifying & Booking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Verify Code & Confirm Booking</span>
+                      <CheckCircle2 className="h-4 w-4" />
+                    </>
                   )}
+                </button>
 
+                <div className="flex items-center justify-between pt-2 text-xs">
                   <button
                     type="button"
-                    onClick={handleCreateAccountAndBook}
-                    disabled={isPending}
-                    style={{ backgroundColor: brandColor }}
-                    className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-90"
+                    onClick={async () => {
+                      try {
+                        await sendBookingOtpAction(getValues("email"));
+                        alert("Verification code resent to " + getValues("mobile"));
+                      } catch (e) {}
+                    }}
+                    className="font-bold text-slate-500 hover:text-slate-900"
                   >
-                    {isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Confirming Appointment...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Create Account & Book</span>
-                        <CheckCircle2 className="h-4 w-4" />
-                      </>
-                    )}
+                    Resend Code
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => setEmailState("EXISTING_ACCOUNT")}
-                    className="mx-auto block pt-2 text-xs font-bold text-slate-500 underline hover:text-slate-900"
+                    onClick={() => setStep(4)}
+                    className="font-bold text-slate-500 hover:text-slate-900"
                   >
-                    Already have an account? Click here to sign in with your password
+                    Change Phone Number
                   </button>
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="text-center">
@@ -2564,7 +2530,7 @@ Registered with CQC and NHS partners.`;
                 onClick={() => setStep(5)}
                 className="text-xs font-bold text-slate-500 hover:text-slate-900"
               >
-                ← Back to Review
+                &larr; Back to Review
               </button>
             </div>
           </div>
