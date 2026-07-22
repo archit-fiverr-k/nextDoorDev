@@ -92,8 +92,7 @@ export default function LoginPage() {
             <img
               src="/assets/header-logo.png"
               alt="NextDoorClinic"
-              style={{ filter: "brightness(0) invert(1)" }}
-              className="h-10 w-auto object-contain"
+              className="h-10 w-auto object-contain brightness-0 invert"
             />
           </Link>
         </div>
@@ -169,13 +168,13 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute right-[-10%] top-[-10%] h-[300px] w-[300px] rounded-full bg-brand-teal/5 blur-3xl lg:hidden" />
 
         <div className="w-full max-w-md space-y-8">
-          {/* Header Mobile Only */}
+          {/* Header (Desktop & Mobile) */}
           <div className="flex flex-col items-center space-y-4 lg:items-start lg:text-left">
-            <Link href="/" className="block lg:hidden">
+            <Link href="/" className="block">
               <img
                 src="/assets/header-logo.png"
                 alt="NextDoorClinic Logo"
-                className="h-10 w-auto object-contain dark:brightness-0 dark:invert"
+                className="h-10 w-auto object-contain"
               />
             </Link>
 
