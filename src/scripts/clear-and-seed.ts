@@ -90,16 +90,49 @@ async function main() {
   }
   console.log("✅ Seeded top 5 categories.");
 
-  // 4. Seed 5 pharmacies in top 5 cities
-  console.log("🌱 Seeding 5 pharmacies across top 5 cities...");
+  // 4. Seed SuperAdmin & Test Customer
+  console.log("🌱 Seeding SuperAdmin & Test Customer...");
   const defaultPasswordHash = hashPassword("password123");
+
+  await prisma.superAdmin.upsert({
+    where: { email: "admin@nextdoorclinic.co.uk" },
+    update: {
+      passwordHash: defaultPasswordHash,
+      isFirstLogin: false,
+    },
+    create: {
+      email: "admin@nextdoorclinic.co.uk",
+      name: "Super Admin",
+      passwordHash: defaultPasswordHash,
+      isFirstLogin: false,
+    },
+  });
+
+  await prisma.customer.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000001" },
+    update: {
+      email: "patient@nextdoorclinic.co.uk",
+      passwordHash: defaultPasswordHash,
+    },
+    create: {
+      id: "00000000-0000-0000-0000-000000000001",
+      firstName: "John",
+      lastName: "Doe",
+      email: "patient@nextdoorclinic.co.uk",
+      phone: "07123456789",
+      passwordHash: defaultPasswordHash,
+    },
+  });
+
+  // 5. Seed 5 pharmacies in top 5 cities
+  console.log("🌱 Seeding 5 pharmacies across top 5 cities...");
 
   const pharmaciesData = [
     {
       name: "West End Pharmacy",
       slug: "west-end-pharmacy",
       displayName: "West End Pharmacy London",
-      email: "london@nextdoorclinic.co.uk",
+      email: "westend@nextdoorclinic.co.uk",
       phone: "020 7437 1234",
       address: "12 Wardour St, Soho, London, W1D 1AN",
       postcode: "W1D 1AN",
