@@ -408,22 +408,28 @@ export async function registerPatientAction(data: RegisterPatientInput) {
     }
 
     // Audit Log
-    await db.auditLog.create({
-      data: {
-        userEmail: email,
-        action: "CREATE",
-        entityName: "PatientAccount",
-        entityId: email,
-        changes: { email, phone, firstName, lastName },
-      },
-    });
+    try {
+      await db.auditLog.create({
+        data: {
+          userEmail: email,
+          action: "CREATE",
+          entityName: "PatientAccount",
+          entityId: email,
+          changes: { email, phone, firstName, lastName },
+        },
+      });
+    } catch (auditErr) {
+      console.error("Audit log notice:", auditErr);
+    }
 
     return { success: true };
   } catch (error: any) {
     console.error("❌ Patient registration error:", error);
     return {
       success: false,
-      error: error.message || "An unexpected error occurred during patient registration",
+      error: error.message?.includes("Can't reach database")
+        ? "Unable to connect to database. Please verify DATABASE_URL setting."
+        : error.message || "Failed to create patient account. Please try again.",
     };
   }
 }
