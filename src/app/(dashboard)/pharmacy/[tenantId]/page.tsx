@@ -145,7 +145,7 @@ export default async function PharmacyDashboardPage({ params }: PharmacyDashboar
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-extrabold text-slate-900 dark:text-slate-50">
-              ${weeklyRevenue.toFixed(2)}
+              £{weeklyRevenue.toFixed(2)}
             </div>
             <p className="mt-1 text-[10px] text-slate-400">Excludes cancelled slots this week</p>
           </CardContent>
@@ -193,7 +193,7 @@ export default async function PharmacyDashboardPage({ params }: PharmacyDashboar
                           {app.customer.firstName} {app.customer.lastName}
                         </p>
                         <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-                          {app.service.name} • Duration: {app.service.duration} mins • $
+                          {app.service.name} • Duration: {app.service.duration} mins • £
                           {Number(app.service.price).toFixed(2)}
                         </p>
                       </div>

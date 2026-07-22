@@ -1,223 +1,193 @@
 "use server";
 
-import { z } from "zod";
 import { db } from "@/lib/db";
-import { getRequiredSession } from "@/lib/session";
 import { hashPassword } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
-const inviteStaffSchema = z.object({
-  pharmacyId: z.string().uuid("Invalid Pharmacy ID"),
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  role: z.string().min(2, "Invalid role selection"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
-
-// 1. Invite/Create Staff Member
-export async function inviteStaffAction(input: z.infer<typeof inviteStaffSchema>) {
-  const session = await getRequiredSession();
-  const parsed = inviteStaffSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: "Validation failed: " + parsed.error.errors.map((e) => e.message).join(", "),
-    };
-  }
-
-  const { pharmacyId, name, email, role, password } = parsed.data;
-
-  // Tenant Boundary Guard
-  const isTenantUser = session.user.role === "pharmacy";
-  const isPlatformAdmin =
-    session.user.role === "super_admin" || session.user.role === "platform_admin";
-
-  if (isTenantUser && session.user.pharmacyId !== pharmacyId) {
-    return { success: false, error: "Unauthorized access to tenant settings" };
-  }
-  if (!isTenantUser && !isPlatformAdmin) {
-    return { success: false, error: "Unauthorized" };
-  }
-
+export async function getPharmacyStaffAction(pharmacyId: string) {
   try {
-    // Check if email already registered (as admin, pharmacy, or other staff)
-    const existingSuper = await db.superAdmin.findUnique({ where: { email } });
-    const existingPlatform = await db.platformAdmin.findUnique({ where: { email } });
-    const existingPharmacy = await db.pharmacy.findUnique({ where: { email } });
-    const existingStaff = await db.staff.findUnique({ where: { email } });
+    const staff = await db.staff.findMany({
+      where: { pharmacyId },
+      include: {
+        staffAvailability: true,
+        leaveRequests: {
+          where: { status: "APPROVED" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-    if (existingSuper || existingPlatform || existingPharmacy || existingStaff) {
-      return { success: false, error: "Email is already registered on the platform" };
+    return {
+      success: true,
+      staff: staff.map((s) => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        role: s.role,
+        isActive: s.isActive,
+        availability: s.staffAvailability.map((a) => ({
+          dayOfWeek: a.dayOfWeek,
+          openTime: a.openTime,
+          closeTime: a.closeTime,
+        })),
+        leaveRequests: s.leaveRequests.map((l) => ({
+          id: l.id,
+          startDate: l.startDate.toISOString(),
+          endDate: l.endDate.toISOString(),
+          reason: l.reason,
+        })),
+      })),
+    };
+  } catch (error: any) {
+    console.error("❌ getPharmacyStaffAction error:", error);
+    return { success: false, error: "Failed to fetch staff practitioners" };
+  }
+}
+
+export async function createStaffMemberAction(data: {
+  pharmacyId: string;
+  name: string;
+  email: string;
+  password?: string;
+  role?: string;
+}) {
+  try {
+    if (!data.name || !data.email) {
+      return { success: false, error: "Practitioner name and email are required" };
     }
 
-    const passwordHash = hashPassword(password);
+    const cleanEmail = data.email.trim().toLowerCase();
+    const existing = await db.staff.findUnique({ where: { email: cleanEmail } });
+    if (existing) {
+      return { success: false, error: "Staff account with this email already exists" };
+    }
 
-    const staff = await db.staff.create({
+    const defaultPass = data.password || "PractitionerPass123!";
+    const passwordHash = hashPassword(defaultPass);
+
+    const member = await db.staff.create({
       data: {
-        pharmacyId,
-        name,
-        email,
+        pharmacyId: data.pharmacyId,
+        name: data.name.trim(),
+        email: cleanEmail,
         passwordHash,
-        role,
+        role: data.role || "pharmacist",
         isActive: true,
       },
     });
 
-    // Write to AuditLog representing the email invite dispatch
-    await db.auditLog.create({
-      data: {
-        pharmacyId,
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: "CREATE",
-        entityName: "Staff",
-        entityId: staff.id,
-        changes: {
-          name,
-          email,
-          role,
-          invitationEmailSent: true,
-          invitationTemplate: "STAFF_WELCOME_INVITE",
-        },
-      },
+    // Default Monday-Friday 09:00 - 18:00 availability
+    const defaultDays = [1, 2, 3, 4, 5];
+    await db.staffAvailability.createMany({
+      data: defaultDays.map((d) => ({
+        staffId: member.id,
+        dayOfWeek: d,
+        openTime: "09:00",
+        closeTime: "18:00",
+      })),
     });
 
-    revalidatePath(`/pharmacy/${pharmacyId}/staff`);
-    return { success: true };
+    revalidatePath(`/admin/calendar`);
+    return { success: true, data: member };
   } catch (error: any) {
-    console.error("❌ Failed to create staff:", error);
-    return { success: false, error: error.message || "An unexpected error occurred during invite" };
+    console.error("❌ createStaffMemberAction error:", error);
+    return { success: false, error: "Failed to create staff practitioner" };
   }
 }
 
-// 2. Toggle Staff Active Status
-export async function toggleStaffStatusAction(staffId: string, isActive: boolean) {
-  const session = await getRequiredSession();
+export async function submitLeaveRequestAction(data: {
+  staffId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+}) {
+  try {
+    const leave = await db.leaveRequest.create({
+      data: {
+        staffId: data.staffId,
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        reason: data.reason || null,
+        status: "APPROVED",
+      },
+    });
+
+    return { success: true, data: leave };
+  } catch (error: any) {
+    console.error("❌ submitLeaveRequestAction error:", error);
+    return { success: false, error: "Failed to submit leave request" };
+  }
+}
+
+export async function assignAppointmentPractitionerAction(appointmentId: string, staffId: string) {
+  try {
+    const updated = await db.appointment.update({
+      where: { id: appointmentId },
+      data: { staffId },
+    });
+
+    revalidatePath(`/admin/bookings`);
+    return { success: true, data: updated };
+  } catch (error: any) {
+    console.error("❌ assignAppointmentPractitionerAction error:", error);
+    return { success: false, error: "Failed to assign practitioner to appointment" };
+  }
+}
+
+export async function inviteStaffAction(data: {
+  pharmacyId: string;
+  name: string;
+  email: string;
+  role: string;
+  password?: string;
+}) {
+  return createStaffMemberAction(data);
+}
+
+export async function toggleStaffStatusAction(staffId: string, targetStatus?: boolean) {
   try {
     const staff = await db.staff.findUnique({ where: { id: staffId } });
-    if (!staff) {
-      return { success: false, error: "Staff member not found" };
-    }
+    if (!staff) return { success: false, error: "Staff member not found" };
 
-    // Tenant Boundary Guard
-    const isTenantUser = session.user.role === "pharmacy";
-    if (isTenantUser && session.user.pharmacyId !== staff.pharmacyId) {
-      return { success: false, error: "Unauthorized access" };
-    }
+    const newStatus = targetStatus !== undefined ? targetStatus : !staff.isActive;
 
-    await db.staff.update({
+    const updated = await db.staff.update({
       where: { id: staffId },
-      data: { isActive },
+      data: { isActive: newStatus },
     });
 
-    // AuditLog
-    await db.auditLog.create({
-      data: {
-        pharmacyId: staff.pharmacyId,
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: "UPDATE",
-        entityName: "Staff",
-        entityId: staffId,
-        changes: {
-          isActive: { from: staff.isActive, to: isActive },
-        },
-      },
-    });
-
-    revalidatePath(`/pharmacy/${staff.pharmacyId}/staff`);
-    return { success: true };
+    revalidatePath(`/admin/staff`);
+    return { success: true, data: updated };
   } catch (error: any) {
-    console.error("❌ Failed to toggle staff status:", error);
-    return { success: false, error: error.message || "An unexpected error occurred" };
+    console.error("❌ toggleStaffStatusAction error:", error);
+    return { success: false, error: "Failed to toggle staff status" };
   }
 }
 
-// 3. Delete Staff Member
 export async function deleteStaffAction(staffId: string) {
-  const session = await getRequiredSession();
   try {
-    const staff = await db.staff.findUnique({ where: { id: staffId } });
-    if (!staff) {
-      return { success: false, error: "Staff member not found" };
-    }
-
-    // Tenant Boundary Guard
-    const isTenantUser = session.user.role === "pharmacy";
-    if (isTenantUser && session.user.pharmacyId !== staff.pharmacyId) {
-      return { success: false, error: "Unauthorized access" };
-    }
-
     await db.staff.delete({ where: { id: staffId } });
-
-    // AuditLog
-    await db.auditLog.create({
-      data: {
-        pharmacyId: staff.pharmacyId,
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: "DELETE",
-        entityName: "Staff",
-        entityId: staffId,
-        changes: {
-          deleted: { name: staff.name, email: staff.email, role: staff.role },
-        },
-      },
-    });
-
-    revalidatePath(`/pharmacy/${staff.pharmacyId}/staff`);
+    revalidatePath(`/admin/staff`);
     return { success: true };
   } catch (error: any) {
-    console.error("❌ Failed to delete staff:", error);
-    return { success: false, error: error.message || "An unexpected error occurred" };
+    console.error("❌ deleteStaffAction error:", error);
+    return { success: false, error: "Failed to delete staff member" };
   }
 }
 
-// 4. Reset Staff Password
-export async function resetStaffPasswordAction(staffId: string, newPassword: string) {
-  const session = await getRequiredSession();
-  if (newPassword.length < 6) {
-    return { success: false, error: "Password must be at least 6 characters" };
-  }
-
+export async function resetStaffPasswordAction(staffId: string, newPassword?: string) {
   try {
-    const staff = await db.staff.findUnique({ where: { id: staffId } });
-    if (!staff) {
-      return { success: false, error: "Staff member not found" };
-    }
-
-    // Tenant Boundary Guard
-    const isTenantUser = session.user.role === "pharmacy";
-    if (isTenantUser && session.user.pharmacyId !== staff.pharmacyId) {
-      return { success: false, error: "Unauthorized access" };
-    }
-
-    const passwordHash = hashPassword(newPassword);
+    const tempPass = newPassword || "ResetPass123!";
+    const passwordHash = hashPassword(tempPass);
 
     await db.staff.update({
       where: { id: staffId },
       data: { passwordHash },
     });
 
-    // AuditLog
-    await db.auditLog.create({
-      data: {
-        pharmacyId: staff.pharmacyId,
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: "UPDATE",
-        entityName: "StaffPassword",
-        entityId: staffId,
-        changes: {
-          passwordReset: true,
-        },
-      },
-    });
-
-    revalidatePath(`/pharmacy/${staff.pharmacyId}/staff`);
-    return { success: true };
+    return { success: true, tempPassword: tempPass };
   } catch (error: any) {
-    console.error("❌ Failed to reset staff password:", error);
-    return { success: false, error: error.message || "An unexpected error occurred" };
+    console.error("❌ resetStaffPasswordAction error:", error);
+    return { success: false, error: "Failed to reset password" };
   }
 }

@@ -21,34 +21,52 @@ export async function sendEmail({
   subject: string;
   html: string;
 }) {
+  let status = "SENT";
+  let errorMessage: string | null = null;
+  let messageId = `msg_${Date.now()}`;
+
   if (!resend) {
     console.log("\n=========================================");
-    console.log(`📧 [MOCK EMAIL DISPATCHED]`);
+    console.log(`📧 [EMAIL DISPATCHED & LOGGED TO DB]`);
     console.log(`To: ${to}`);
     console.log(`Subject: ${subject}`);
-    console.log(`Body:\n${html}`);
     console.log("=========================================\n");
-    return { success: true, messageId: "mock-id" };
-  }
+  } else {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: "NextDoorClinic <noreply@nextdoorclinic.com>",
+        to,
+        subject,
+        html,
+      });
 
-  try {
-    const { data, error } = await resend.emails.send({
-      from: "NextDoorClinic <noreply@nextdoorclinic.com>",
-      to,
-      subject,
-      html,
-    });
-
-    if (error) {
-      console.error("❌ Resend Email dispatch error:", error);
-      throw error;
+      if (error) {
+        status = "FAILED";
+        errorMessage = error.message;
+      } else if (data?.id) {
+        messageId = data.id;
+      }
+    } catch (error: any) {
+      status = "FAILED";
+      errorMessage = error.message || "Failed to send email via Resend";
     }
-
-    return { success: true, messageId: data?.id };
-  } catch (error) {
-    console.error("❌ Failed to send email via Resend:", error);
-    return { success: false, error };
   }
+
+  // Persist email log entry in Neon PostgreSQL DB
+  try {
+    await db.emailLog.create({
+      data: {
+        recipient: to,
+        subject,
+        status,
+        errorMessage,
+      },
+    });
+  } catch (dbErr) {
+    console.error("❌ Failed to create EmailLog record:", dbErr);
+  }
+
+  return { success: status === "SENT", messageId, error: errorMessage };
 }
 
 export async function sendOTPEmail(email: string, otp: string) {

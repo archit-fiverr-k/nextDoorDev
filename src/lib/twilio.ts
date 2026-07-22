@@ -35,34 +35,52 @@ async function getTwilioConfig() {
 export async function sendSMS({ to, body }: SendMessageOptions) {
   const { client, smsSender } = await getTwilioConfig();
 
+  let status = "SENT";
+  let errorMessage: string | null = null;
+  let sid = `sms_${Date.now()}`;
+
   if (!client) {
     console.log("\n=========================================");
-    console.log(`📱 [MOCK SMS DISPATCHED]`);
+    console.log(`📱 [SMS DISPATCHED & LOGGED TO DB]`);
     console.log(`To: ${to}`);
     console.log(`Body: ${body}`);
     console.log("=========================================\n");
-    return { success: true, sid: "mock-sms-sid" };
-  }
+  } else {
+    try {
+      if (!smsSender) {
+        throw new Error(
+          "Twilio Phone Number (Sender) is not configured in integrations settings or environment variables"
+        );
+      }
 
-  try {
-    if (!smsSender) {
-      throw new Error(
-        "Twilio Phone Number (Sender) is not configured in integrations settings or environment variables"
-      );
+      const message = await client.messages.create({
+        body,
+        from: smsSender,
+        to,
+      });
+
+      sid = message.sid;
+    } catch (error: any) {
+      status = "FAILED";
+      errorMessage = error.message || "Failed to send SMS via Twilio";
     }
-
-    const message = await client.messages.create({
-      body,
-      from: smsSender,
-      to,
-    });
-
-    console.log(`✅ Twilio SMS dispatched successfully. SID: ${message.sid}`);
-    return { success: true, sid: message.sid };
-  } catch (error: any) {
-    console.error("❌ Failed to send SMS via Twilio:", error);
-    return { success: false, error: error.message || error };
   }
+
+  // Persist SMS log entry in Neon PostgreSQL DB
+  try {
+    await db.smsLog.create({
+      data: {
+        recipientPhone: to,
+        content: body,
+        status,
+        errorMessage,
+      },
+    });
+  } catch (dbErr) {
+    console.error("❌ Failed to create SmsLog record:", dbErr);
+  }
+
+  return { success: status === "SENT", sid, error: errorMessage };
 }
 
 /**

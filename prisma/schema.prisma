@@ -114,6 +114,12 @@ model Pharmacy {
   communicationsLog CommunicationsLog[]
   auditLogs         AuditLog[]
   staff             Staff[]
+  reviews           Review[]
+  reviewReplies     ReviewReply[]
+  campaigns         Campaign[]
+  coupons           Coupon[]
+  promotions        Promotion[]
+  payments          Payment[]
 
   latitude          Float?        @map("latitude")
   longitude         Float?        @map("longitude")
@@ -153,6 +159,7 @@ model Service {
 
   pharmacy     Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  reviews      Review[]
 
   categoryId   String?      @map("category_id") @db.Uuid
   serviceCategory Category?  @relation("ServiceCategory", fields: [categoryId], references: [id], onDelete: SetNull)
@@ -225,6 +232,8 @@ model Customer {
   crmNotes          CRMNote[]
   communicationsLog CommunicationsLog[]
   notifications     PatientNotification[]
+  reviews           Review[]
+  payments          Payment[]
 
   deletedAt         DateTime?            @map("deleted_at")
   isActive          Boolean              @default(true) @map("is_active")
@@ -239,6 +248,7 @@ model Appointment {
   pharmacyId   String            @map("pharmacy_id") @db.Uuid
   customerId   String            @map("customer_id") @db.Uuid
   serviceId    String            @map("service_id") @db.Uuid
+  staffId      String?           @map("staff_id") @db.Uuid
   startTime    DateTime          @map("start_time")
   endTime      DateTime          @map("end_time")
   status       AppointmentStatus @default(PENDING)
@@ -249,6 +259,9 @@ model Appointment {
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  staff    Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  review   Review?
+  payment  Payment?
 
   @@index([pharmacyId])
   @@index([customerId])
@@ -382,17 +395,20 @@ model SystemSetting {
 }
 
 model Staff {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  pharmacyId   String   @map("pharmacy_id") @db.Uuid
-  name         String
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         String   @default("pharmacist") // reception, pharmacist, manager, custom
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId        String              @map("pharmacy_id") @db.Uuid
+  name              String
+  email             String              @unique
+  passwordHash      String              @map("password_hash")
+  role              String              @default("pharmacist") // reception, pharmacist, manager, custom
+  isActive          Boolean             @default(true) @map("is_active")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  pharmacy     Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  pharmacy          Pharmacy            @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  staffAvailability StaffAvailability[]
+  leaveRequests     LeaveRequest[]
+  appointments      Appointment[]
 
   @@map("staff")
 }
@@ -549,4 +565,348 @@ model SearchNotificationWaitlist {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("search_notification_waitlist")
+}
+
+// ==========================================
+// 1. REVIEWS & RATINGS
+// ==========================================
+
+model Review {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId    String   @map("pharmacy_id") @db.Uuid
+  serviceId     String?  @map("service_id") @db.Uuid
+  customerId    String   @map("customer_id") @db.Uuid
+  appointmentId String   @unique @map("appointment_id") @db.Uuid
+  rating        Int      @default(5)
+  title         String?
+  content       String   @db.Text
+  isAnonymous   Boolean  @default(false) @map("is_anonymous")
+  isFeatured    Boolean  @default(false) @map("is_featured")
+  status        String   @default("APPROVED") // PENDING, APPROVED, FLAGGED, HIDDEN
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  pharmacy      Pharmacy     @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  service       Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  appointment   Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  replies       ReviewReply[]
+  reports       ReviewReport[]
+
+  @@index([pharmacyId])
+  @@index([serviceId])
+  @@index([customerId])
+  @@map("reviews")
+}
+
+model ReviewReply {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId    String   @map("review_id") @db.Uuid
+  pharmacyId  String   @map("pharmacy_id") @db.Uuid
+  replyText   String   @db.Text @map("reply_text")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  review      Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  pharmacy    Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+  @@map("review_replies")
+}
+
+model ReviewReport {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId     String   @map("review_id") @db.Uuid
+  reportedById String?  @map("reported_by_id") @db.Uuid
+  reason       String   @db.Text
+  status       String   @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  review       Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+  @@map("review_reports")
+}
+
+// ==========================================
+// 2. MARKETING & CAMPAIGNS
+// ==========================================
+
+model Campaign {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId       String    @map("pharmacy_id") @db.Uuid
+  title            String
+  type             String    // EMAIL, SMS, DISCOUNT, PROMOTION
+  targetAudience   String?   @default("ALL") @map("target_audience")
+  startDate        DateTime  @map("start_date")
+  endDate          DateTime? @map("end_date")
+  status           String    @default("ACTIVE") // DRAFT, ACTIVE, PAUSED, COMPLETED
+  clicksCount      Int       @default(0) @map("clicks_count")
+  conversionsCount Int       @default(0) @map("conversions_count")
+  revenueGenerated Decimal   @default(0) @db.Decimal(10, 2) @map("revenue_generated")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  pharmacy         Pharmacy  @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@map("campaigns")
+}
+
+model Coupon {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId       String?   @map("pharmacy_id") @db.Uuid
+  code             String    @unique
+  discountType     String    @default("PERCENTAGE") @map("discount_type") // PERCENTAGE, FIXED
+  discountValue    Decimal   @db.Decimal(10, 2) @map("discount_value")
+  minBookingAmount Decimal?  @db.Decimal(10, 2) @map("min_booking_amount")
+  usageLimit       Int?      @map("usage_limit")
+  timesUsed        Int       @default(0) @map("times_used")
+  expiresAt        DateTime? @map("expires_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  pharmacy         Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@map("coupons")
+}
+
+model Promotion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId   String?  @map("pharmacy_id") @db.Uuid
+  title        String
+  subtitle     String?
+  bannerUrl    String?  @map("banner_url")
+  linkUrl      String?  @map("link_url")
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  pharmacy     Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@map("promotions")
+}
+
+// ==========================================
+// 3. MULTI-FACTOR AUTHENTICATION (MFA)
+// ==========================================
+
+model UserMfa {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  customerId  String?  @map("customer_id") @db.Uuid
+  type        String   @default("TOTP") // TOTP, EMAIL_OTP, SMS_OTP
+  secret      String
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  backupCodes String[] @default([]) @map("backup_codes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, type])
+  @@unique([customerId, type])
+  @@map("user_mfa")
+}
+
+model TrustedDevice {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String?  @map("user_id") @db.Uuid
+  customerId        String?  @map("customer_id") @db.Uuid
+  deviceFingerprint String   @map("device_fingerprint")
+  deviceName        String?  @map("device_name")
+  ipAddress         String?  @map("ip_address")
+  userAgent         String?  @map("user_agent")
+  lastUsedAt        DateTime @default(now()) @map("last_used_at")
+  expiresAt         DateTime @map("expires_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([deviceFingerprint])
+  @@map("trusted_devices")
+}
+
+// ==========================================
+// 4. PRACTITIONER SCHEDULING & ROSTERS
+// ==========================================
+
+model StaffAvailability {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffId   String   @map("staff_id") @db.Uuid
+  dayOfWeek Int      @map("day_of_week") // 0 (Sunday) to 6 (Saturday)
+  openTime  String   @map("open_time")
+  closeTime String   @map("close_time")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, dayOfWeek])
+  @@map("staff_availability")
+}
+
+model LeaveRequest {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffId   String   @map("staff_id") @db.Uuid
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  reason    String?
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@map("leave_requests")
+}
+
+// ==========================================
+// 5. PAYMENTS & FINANCIAL TRANSACTIONS
+// ==========================================
+
+model Payment {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId        String?     @unique @map("appointment_id") @db.Uuid
+  customerId           String      @map("customer_id") @db.Uuid
+  pharmacyId           String      @map("pharmacy_id") @db.Uuid
+  amount               Decimal     @db.Decimal(10, 2)
+  currency             String      @default("GBP")
+  status               String      @default("COMPLETED") // PENDING, COMPLETED, REFUNDED, FAILED
+  paymentMethod        String      @default("PAY_AT_CLINIC") @map("payment_method") // STRIPE_CARD, PAY_AT_CLINIC, APPLE_PAY
+  stripePaymentIntentId String?    @map("stripe_payment_intent_id")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  customer             Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  pharmacy             Pharmacy    @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  appointment          Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  refunds              Refund[]
+
+  @@index([pharmacyId])
+  @@index([customerId])
+  @@map("payments")
+}
+
+model Refund {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId      String   @map("payment_id") @db.Uuid
+  amount         Decimal  @db.Decimal(10, 2)
+  reason         String?
+  stripeRefundId String?  @map("stripe_refund_id")
+  status         String   @default("COMPLETED") // PENDING, COMPLETED, FAILED
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("refunds")
+}
+
+model WebhookEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId     String   @unique @map("event_id")
+  eventType   String   @map("event_type")
+  payload     Json
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("webhook_events")
+}
+
+// ==========================================
+// 6. EMAIL & SMS LOG QUEUE
+// ==========================================
+
+model EmailLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipient    String
+  subject      String
+  templateName String?  @map("template_name")
+  status       String   @default("SENT") // SENT, FAILED, QUEUED
+  errorMessage String?  @map("error_message") @db.Text
+  sentAt       DateTime @default(now()) @map("sent_at")
+
+  @@index([recipient])
+  @@map("email_logs")
+}
+
+model SmsLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientPhone String   @map("recipient_phone")
+  content        String   @db.Text
+  status         String   @default("SENT") // SENT, FAILED, QUEUED
+  errorMessage   String?  @map("error_message") @db.Text
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  @@index([recipientPhone])
+  @@map("sms_logs")
+}
+
+// ==========================================
+// 7. MEDIA ASSET STORAGE
+// ==========================================
+
+model MediaAsset {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId String?  @map("pharmacy_id") @db.Uuid
+  customerId String?  @map("customer_id") @db.Uuid
+  fileName   String   @map("file_name")
+  fileUrl    String   @map("file_url")
+  fileSize   Int      @map("file_size")
+  mimeType   String   @map("mime_type")
+  category   String   @default("GENERAL") // CLINIC_GALLERY, PATIENT_DOCUMENT, CERTIFICATE
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("media_assets")
+}
+
+// ==========================================
+// 8. SECURITY & SESSION MANAGEMENT
+// ==========================================
+
+model UserSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  customerId   String?  @map("customer_id") @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  refreshToken String?  @unique @map("refresh_token")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  isRevoked    Boolean  @default(false) @map("is_revoked")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([sessionToken])
+  @@map("user_sessions")
+}
+
+model SecurityLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  customerId String?  @map("customer_id") @db.Uuid
+  eventType  String   @map("event_type") // LOGIN_SUCCESS, LOGIN_FAILED, PASSWORD_CHANGE, MFA_VERIFIED
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([eventType])
+  @@map("security_logs")
+}
+
+// ==========================================
+// 9. DAILY ANALYTICS AGGREGATES
+// ==========================================
+
+model DailyAnalytics {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId     String?  @map("pharmacy_id") @db.Uuid
+  date           DateTime @db.Date
+  totalBookings  Int      @default(0) @map("total_bookings")
+  totalRevenue   Decimal  @default(0) @db.Decimal(10, 2) @map("total_revenue")
+  cancellations  Int      @default(0)
+  newPatients    Int      @default(0) @map("new_patients")
+  averageRating  Float    @default(5.0) @map("average_rating")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([pharmacyId, date])
+  @@map("daily_analytics")
 }
