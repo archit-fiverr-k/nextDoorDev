@@ -349,7 +349,7 @@ export function ServicePageView({
           {/* LEFT MAIN COLUMN (8 cols): Clinical Guidance & Info */}
           <div className="space-y-12 lg:col-span-8">
             {/* SERVICE OVERVIEW */}
-            <section className="space-y-5 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+            <section className="shadow-xs space-y-5 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
               <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
                 <HeartPulse className="h-5 w-5 text-emerald-600" />
                 <span>Service Overview & About the Treatment</span>
@@ -360,7 +360,7 @@ export function ServicePageView({
               </p>
 
               <div className="grid gap-4 pt-2 sm:grid-cols-2">
-                <div className="space-y-1 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-zinc-700/60 dark:bg-zinc-800/60">
+                <div className="space-y-1 rounded-md border border-slate-100 bg-slate-50 p-4 dark:border-zinc-700/60 dark:bg-zinc-800/60">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100">
                     Clinical Standards
                   </h3>
@@ -369,7 +369,7 @@ export function ServicePageView({
                     hygiene standards.
                   </p>
                 </div>
-                <div className="space-y-1 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-zinc-700/60 dark:bg-zinc-800/60">
+                <div className="space-y-1 rounded-md border border-slate-100 bg-slate-50 p-4 dark:border-zinc-700/60 dark:bg-zinc-800/60">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100">
                     Direct Prescribing
                   </h3>
@@ -381,7 +381,7 @@ export function ServicePageView({
             </section>
 
             {/* WHO IS ELIGIBLE & BENEFITS */}
-            <section className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+            <section className="shadow-xs space-y-6 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
               <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
                 <UserCheck className="h-5 w-5 text-emerald-600" />
                 <span>Who is Eligible & Key Benefits</span>
@@ -416,7 +416,7 @@ export function ServicePageView({
                   Benefits of Community Clinic Care
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                  <div className="space-y-1 rounded-md border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <p className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
                       Instant Access
                     </p>
@@ -424,7 +424,7 @@ export function ServicePageView({
                       Same-day and next-day booking availability.
                     </p>
                   </div>
-                  <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                  <div className="space-y-1 rounded-md border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <p className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
                       Upfront Price
                     </p>
@@ -432,7 +432,7 @@ export function ServicePageView({
                       Transparent £{Number(service.price).toFixed(2)} cost with £0 online deposit.
                     </p>
                   </div>
-                  <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                  <div className="space-y-1 rounded-md border border-emerald-100 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <p className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
                       GPhC Qualified
                     </p>
@@ -445,13 +445,13 @@ export function ServicePageView({
             </section>
 
             {/* PREPARATION & APPOINTMENT STEPS */}
-            <section className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+            <section className="shadow-xs space-y-6 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
               <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
                 <FileText className="h-5 w-5 text-emerald-600" />
                 <span>Preparation & What Happens During Your Visit</span>
               </h2>
 
-              <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/80 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
                 <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
                   <AlertCircle className="h-4 w-4 text-amber-600" /> Pre-Appointment Preparation
                   Notes
@@ -514,7 +514,7 @@ export function ServicePageView({
             </section>
 
             {/* FREQUENTLY ASKED QUESTIONS */}
-            <section className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+            <section className="shadow-xs space-y-6 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
               <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
                 <HelpCircle className="h-5 w-5 text-emerald-600" />
                 <span>Frequently Asked Questions</span>
@@ -547,7 +547,7 @@ export function ServicePageView({
 
             {/* RELATED SERVICES */}
             {relatedServices.length > 0 && (
-              <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+              <section className="shadow-xs space-y-4 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
                 <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
                   <Sparkles className="h-5 w-5 text-emerald-600" />
                   <span>Related Clinical Services</span>
@@ -557,7 +557,7 @@ export function ServicePageView({
                     <Link
                       key={rel.id}
                       href={`/${rel.pharmacySlug}/${rel.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                      className="group flex items-center justify-between rounded-xl border border-slate-200 p-4 transition-all hover:border-emerald-500 hover:shadow-md dark:border-zinc-800 dark:hover:border-emerald-500"
+                      className="hover:shadow-xs group flex items-center justify-between rounded-md border border-slate-200 p-4 transition-all hover:border-emerald-500 dark:border-zinc-800 dark:hover:border-emerald-500"
                     >
                       <div>
                         <h3 className="text-sm font-bold text-slate-900 transition-colors group-hover:text-emerald-600 dark:text-white">
@@ -575,7 +575,7 @@ export function ServicePageView({
             )}
 
             {/* MEDICAL DISCLAIMER & AUTHOR METADATA */}
-            <div className="select-none space-y-2 rounded-xl border border-slate-200/80 bg-slate-50 p-5 text-xs text-slate-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
+            <div className="select-none space-y-2 rounded-md border border-slate-200 bg-slate-50 p-5 text-xs text-slate-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
               <p className="font-semibold text-slate-700 dark:text-zinc-300">
                 Medical Disclaimer & Editorial Governance
               </p>
@@ -600,7 +600,7 @@ export function ServicePageView({
           {/* RIGHT SIDEBAR (4 cols): Sticky Booking Card & Clinic Profile */}
           <div className="space-y-6 lg:sticky lg:top-24 lg:col-span-4">
             {/* Main Action Booking Card */}
-            <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="shadow-xs space-y-5 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="space-y-1 border-b border-slate-100 pb-4 dark:border-zinc-800">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                   Instant Booking Guarantee
@@ -633,18 +633,18 @@ export function ServicePageView({
 
               <Link
                 href={`/book/${pharmacy.slug}?serviceId=${service.id}`}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition-all hover:bg-emerald-500"
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-[#000e35] py-3.5 text-sm font-bold text-white transition-all hover:bg-slate-800"
               >
                 <CalendarCheck className="h-4 w-4" /> Book Appointment
               </Link>
 
               <div className="text-center text-[11px] text-slate-400 dark:text-zinc-500">
-                🔒 Free cancellation & rescheduling anytime
+                Free cancellation & rescheduling anytime
               </div>
             </div>
 
             {/* Clinic Info & Opening Hours Card */}
-            <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="shadow-xs space-y-4 rounded-lg border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
               <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
                 <Building className="h-4 w-4 text-emerald-600" /> Clinic Information
               </h3>
