@@ -1667,90 +1667,192 @@ Registered with CQC and NHS partners.`;
           </div>
         )}
 
-        {/* STEP 2: CHOOSE DATE */}
+        {/* STEP 2: CHOOSE DATE & TIME SLOT (UNIFIED) */}
         {step === 2 && selectedServices.length > 0 && (
-          <div className="mx-auto max-w-3xl space-y-6 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm duration-300 animate-in fade-in-50 sm:p-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-xl font-extrabold text-[#000e35]">Choose Appointment Date</h2>
-                <p className="text-xs font-medium text-slate-500">
-                  Unavailable dates are locked automatically. Earliest available date is
-                  highlighted.
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
-                  disabled={startOfMonth(currentMonth) <= startOfMonth(new Date())}
-                  className="rounded-full p-2 transition-colors hover:bg-slate-100 disabled:opacity-30"
-                >
-                  <ChevronLeft className="h-5 w-5 text-[#000e35]" />
-                </button>
-                <span className="min-w-[120px] text-center text-sm font-bold capitalize text-slate-800">
-                  {format(currentMonth, "MMMM yyyy")}
-                </span>
-                <button
-                  onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-                  className="rounded-full p-2 transition-colors hover:bg-slate-100"
-                >
-                  <ChevronRight className="h-5 w-5 text-[#000e35]" />
-                </button>
-              </div>
+          <div className="mx-auto max-w-5xl space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm duration-300 animate-in fade-in-50 sm:p-8">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-xl font-extrabold text-[#000e35]">Select Date & Time Slot</h2>
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
+                Choose an available date on the calendar, then pick your preferred time slot at{" "}
+                {pharmacyName}.
+              </p>
             </div>
 
-            {/* Day Headers */}
-            <div className="grid grid-cols-7 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              <span>MON</span>
-              <span>TUE</span>
-              <span>WED</span>
-              <span>THU</span>
-              <span>FRI</span>
-              <span>SAT</span>
-              <span>SUN</span>
-            </div>
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+              {/* LEFT COLUMN: CALENDAR DATE PICKER */}
+              <div className="space-y-4 lg:col-span-5">
+                <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+                    disabled={startOfMonth(currentMonth) <= startOfMonth(new Date())}
+                    className="rounded-full p-1.5 transition-colors hover:bg-slate-200/70 disabled:opacity-30"
+                  >
+                    <ChevronLeft className="h-4 w-4 text-[#000e35]" />
+                  </button>
+                  <span className="text-xs font-extrabold capitalize text-slate-800">
+                    {format(currentMonth, "MMMM yyyy")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+                    className="rounded-full p-1.5 transition-colors hover:bg-slate-200/70"
+                  >
+                    <ChevronRight className="h-4 w-4 text-[#000e35]" />
+                  </button>
+                </div>
 
-            {/* Calendar Days */}
-            <div className="grid grid-cols-7 gap-2">
-              {generateMonthDays().map((day, idx) => {
-                const inMonth = isSameMonth(day, currentMonth);
-                const available = isDateAvailable(day);
-                const isSelected = selectedDate && isSameDay(day, selectedDate);
-                const isPast = isBefore(day, startOfDay(new Date()));
+                {/* Day Headers */}
+                <div className="grid grid-cols-7 text-center text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                  <span>MON</span>
+                  <span>TUE</span>
+                  <span>WED</span>
+                  <span>THU</span>
+                  <span>FRI</span>
+                  <span>SAT</span>
+                  <span>SUN</span>
+                </div>
 
-                return (
-                  <div key={idx} className="flex items-center justify-center">
-                    {available ? (
-                      <button
-                        onClick={() => {
-                          setSelectedDate(day);
-                          setSelectedSlot(null);
-                        }}
-                        type="button"
-                        style={isSelected ? { backgroundColor: brandColor } : {}}
-                        className={`w-full cursor-pointer rounded-xl py-4 text-center text-sm transition-all ${
-                          !inMonth ? "text-slate-350" : ""
-                        } ${
-                          isSelected
-                            ? "font-bold text-white shadow-md"
-                            : "border border-slate-200 bg-white font-semibold text-slate-800 hover:bg-slate-100"
-                        }`}
-                      >
-                        {format(day, "d")}
-                      </button>
-                    ) : (
-                      <div
-                        className={`w-full select-none py-4 text-center text-sm font-normal text-slate-300 ${
-                          !inMonth || isPast ? "opacity-30" : ""
-                        }`}
-                      >
-                        {format(day, "d")}
+                {/* Calendar Days Grid */}
+                <div className="grid grid-cols-7 gap-1.5">
+                  {generateMonthDays().map((day, idx) => {
+                    const inMonth = isSameMonth(day, currentMonth);
+                    const available = isDateAvailable(day);
+                    const isSelected = selectedDate && isSameDay(day, selectedDate);
+                    const isPast = isBefore(day, startOfDay(new Date()));
+
+                    return (
+                      <div key={idx} className="flex items-center justify-center">
+                        {available ? (
+                          <button
+                            onClick={() => {
+                              setSelectedDate(day);
+                              setSelectedSlot(null);
+                            }}
+                            type="button"
+                            style={isSelected ? { backgroundColor: brandColor } : {}}
+                            className={`w-full cursor-pointer rounded-lg py-2.5 text-center text-xs transition-all ${
+                              !inMonth ? "text-slate-350" : ""
+                            } ${
+                              isSelected
+                                ? "font-bold text-white shadow-md"
+                                : "border border-slate-200 bg-white font-semibold text-slate-800 hover:bg-slate-100"
+                            }`}
+                          >
+                            {format(day, "d")}
+                          </button>
+                        ) : (
+                          <div
+                            className={`w-full select-none py-2.5 text-center text-xs font-normal text-slate-300 ${
+                              !inMonth || isPast ? "opacity-30" : ""
+                            }`}
+                          >
+                            {format(day, "d")}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: TIME SLOTS FOR SELECTED DATE */}
+              <div className="space-y-4 rounded-xl border border-slate-100 bg-slate-50/50 p-5 lg:col-span-7">
+                {!selectedDate ? (
+                  <div className="flex h-full min-h-[260px] flex-col items-center justify-center space-y-3 p-6 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <CalendarIcon className="h-6 w-6" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-600">
+                      Select a date on the calendar to view available time slots.
+                    </p>
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-[#000e35]">
+                        Available Slots for {format(selectedDate, "EEE, MMM d, yyyy")}
+                      </h3>
+                      {selectedSlot && (
+                        <span className="text-[11px] font-bold text-emerald-600">
+                          Selected: {selectedSlot.label}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
+                      {slotsLoading ? (
+                        <div className="flex h-36 items-center justify-center space-x-2 text-slate-400">
+                          <Loader2 className="h-5 w-5 animate-spin text-[#006c4a]" />
+                          <span className="text-xs font-bold">Checking slot availability...</span>
+                        </div>
+                      ) : slotsError ? (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold text-rose-600">
+                          {slotsError}
+                        </div>
+                      ) : totalGroupedSlotsCount === 0 ? (
+                        <div className="py-10 text-center text-xs font-bold text-slate-400">
+                          No available slots on this date. Please choose another date.
+                        </div>
+                      ) : (
+                        (["Morning", "Afternoon", "Evening"] as const).map((period) => {
+                          const periodSlots = groupedSlots[period];
+                          if (periodSlots.length === 0) return null;
+                          return (
+                            <div key={period} className="space-y-2">
+                              <div className="flex items-center gap-1.5 text-slate-400">
+                                {period === "Morning" && <Sun className="h-3.5 w-3.5" />}
+                                {period === "Afternoon" && (
+                                  <Sun className="h-3.5 w-3.5 text-amber-500" />
+                                )}
+                                {period === "Evening" && <Moon className="h-3.5 w-3.5" />}
+                                <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                                  {period}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                {periodSlots.map((slot) => {
+                                  const isSelected = selectedSlot?.startTime === slot.startTime;
+                                  return slot.isAvailable ? (
+                                    <button
+                                      key={slot.startTime}
+                                      onClick={() => setSelectedSlot(slot)}
+                                      type="button"
+                                      style={
+                                        isSelected
+                                          ? { backgroundColor: brandColor, borderColor: brandColor }
+                                          : {}
+                                      }
+                                      className={`cursor-pointer rounded-xl border px-2 py-2.5 text-xs font-bold transition-all ${
+                                        isSelected
+                                          ? "text-white shadow-md"
+                                          : "border-slate-200 bg-white text-slate-800 hover:border-slate-400"
+                                      }`}
+                                    >
+                                      {slot.label}
+                                    </button>
+                                  ) : (
+                                    <div
+                                      key={slot.startTime}
+                                      className="select-none rounded-xl border border-slate-100 bg-slate-100/60 px-2 py-2.5 text-center text-xs font-bold text-slate-300"
+                                    >
+                                      {slot.label}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
+            {/* Step Navigation Footer */}
             <div className="flex items-center justify-between border-t border-slate-100 pt-4">
               <button
                 type="button"
@@ -1761,109 +1863,8 @@ Registered with CQC and NHS partners.`;
               </button>
 
               <button
-                disabled={!selectedDate}
-                onClick={handleContinueFromStep2}
-                style={{ backgroundColor: brandColor }}
-                className="flex items-center gap-2 rounded-xl px-8 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-95 disabled:opacity-30"
-              >
-                <span>Continue to Time</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: CHOOSE TIME */}
-        {step === 3 && selectedServices.length > 0 && selectedDate && (
-          <div className="mx-auto max-w-2xl space-y-6 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm duration-300 animate-in fade-in-50 sm:p-8">
-            <div className="border-b border-slate-100 pb-4">
-              <h2 className="text-xl font-extrabold text-[#000e35]">Select Appointment Time</h2>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Showing available slots at {pharmacyName} for{" "}
-                <strong className="text-[#000e35]">
-                  {format(selectedDate, "EEEE, MMMM d, yyyy")}
-                </strong>
-              </p>
-            </div>
-
-            <div className="max-h-96 space-y-6 overflow-y-auto pr-1">
-              {slotsLoading ? (
-                <div className="flex h-40 items-center justify-center space-x-2 text-slate-400">
-                  <Loader2 className="h-6 w-6 animate-spin text-[#006c4a]" />
-                  <span className="text-xs font-bold">Checking slot availability...</span>
-                </div>
-              ) : slotsError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold text-rose-600">
-                  {slotsError}
-                </div>
-              ) : totalGroupedSlotsCount === 0 ? (
-                <div className="py-12 text-center text-xs font-bold text-slate-400">
-                  No available slots on this date. Please choose another date.
-                </div>
-              ) : (
-                (["Morning", "Afternoon", "Evening"] as const).map((period) => {
-                  const periodSlots = groupedSlots[period];
-                  if (periodSlots.length === 0) return null;
-                  return (
-                    <div key={period} className="space-y-3">
-                      <div className="flex items-center gap-2 border-b border-slate-100 pb-1 text-slate-400">
-                        {period === "Morning" && <Sun className="h-4 w-4" />}
-                        {period === "Afternoon" && <Sun className="h-4 w-4 text-amber-500" />}
-                        {period === "Evening" && <Moon className="h-4 w-4" />}
-                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-                          {period}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                        {periodSlots.map((slot) => {
-                          const isSelected = selectedSlot?.startTime === slot.startTime;
-                          return slot.isAvailable ? (
-                            <button
-                              key={slot.startTime}
-                              onClick={() => setSelectedSlot(slot)}
-                              type="button"
-                              style={
-                                isSelected
-                                  ? { backgroundColor: brandColor, borderColor: brandColor }
-                                  : {}
-                              }
-                              className={`cursor-pointer rounded-xl border px-2 py-3 text-xs font-bold transition-all ${
-                                isSelected
-                                  ? "text-white shadow-lg"
-                                  : "border-slate-200 bg-white hover:border-slate-400"
-                              }`}
-                            >
-                              {slot.label}
-                            </button>
-                          ) : (
-                            <div
-                              key={slot.startTime}
-                              className="select-none rounded-xl border border-slate-100 bg-slate-50 px-2 py-3 text-center text-xs font-bold text-slate-300"
-                            >
-                              {slot.label}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#000e35]"
-              >
-                <ChevronLeft className="h-4 w-4" /> Back to Date
-              </button>
-
-              <button
-                disabled={!selectedSlot}
-                onClick={handleContinueFromStep3}
+                disabled={!selectedDate || !selectedSlot}
+                onClick={() => setStep(4)}
                 style={{ backgroundColor: brandColor }}
                 className="flex items-center gap-2 rounded-xl px-8 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-95 disabled:opacity-30"
               >
@@ -2268,10 +2269,10 @@ Registered with CQC and NHS partners.`;
               <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(2)}
                   className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#000e35]"
                 >
-                  <ChevronLeft className="h-4 w-4" /> Back to Time
+                  <ChevronLeft className="h-4 w-4" /> Back to Date & Time
                 </button>
 
                 <button
