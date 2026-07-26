@@ -6,9 +6,15 @@ import { Metadata } from "next";
 
 export const revalidate = 0;
 
+import { slugify } from "@/lib/slug";
+
 interface PublicBookingPageProps {
   params: {
     pharmacySlug: string;
+  };
+  searchParams?: {
+    serviceId?: string;
+    service?: string;
   };
 }
 
@@ -36,7 +42,7 @@ export async function generateMetadata({ params }: PublicBookingPageProps): Prom
   };
 }
 
-export default async function PublicBookingPage({ params }: PublicBookingPageProps) {
+export default async function PublicBookingPage({ params, searchParams }: PublicBookingPageProps) {
   const { pharmacySlug } = params;
   const session = await auth();
 
@@ -135,12 +141,27 @@ export default async function PublicBookingPage({ params }: PublicBookingPagePro
     }
   }
 
+  // Resolve preselected service if passed via query params (serviceId or service slug/name)
+  let initialServiceId: string | undefined = undefined;
+  if (searchParams?.serviceId) {
+    const foundById = sanitizedServices.find((s) => s.id === searchParams.serviceId);
+    if (foundById) initialServiceId = foundById.id;
+  }
+  if (!initialServiceId && searchParams?.service) {
+    const sQuery = searchParams.service.toLowerCase();
+    const foundBySlug = sanitizedServices.find(
+      (s) => slugify(s.name) === sQuery || s.name.toLowerCase().includes(sQuery)
+    );
+    if (foundBySlug) initialServiceId = foundBySlug.id;
+  }
+
   return (
     <BookingWizard
       pharmacy={sanitizedPharmacy}
       services={sanitizedServices}
       categories={sanitizedCategories}
       currentUser={currentUser}
+      initialServiceId={initialServiceId}
     />
   );
 }

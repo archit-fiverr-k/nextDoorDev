@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { createBookingSchema, CreateBookingInput, requestOTPSchema } from "@/schemas/bookings";
 import { sendOTPEmail, sendBookingConfirmationEmail } from "@/lib/email";
+import { sendSMS, sendWhatsapp } from "@/lib/twilio";
 
 export async function sendOTPAction(email: string) {
   const result = requestOTPSchema.safeParse({ email });
@@ -129,14 +130,35 @@ export async function createBookingAction(data: CreateBookingInput) {
       },
     });
 
-    // 5. Send Confirmation Email
-    await sendBookingConfirmationEmail(patientEmail, {
-      patientName,
-      branchName: pharmacy.name, // The pharmacy name serves as the main facility
-      serviceName: service.name,
-      startTime: new Date(startTime),
-      bookingId: appointment.id,
-    });
+    // 5. Send Confirmation Email, SMS, and WhatsApp
+    const referenceCode = `NDC-${appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+    try {
+      await sendBookingConfirmationEmail(patientEmail, {
+        patientName,
+        branchName: pharmacy.name,
+        serviceName: service.name,
+        startTime: new Date(startTime),
+        bookingId: referenceCode,
+      });
+    } catch (emailErr) {
+      console.warn("⚠️ Failed to send booking email:", emailErr);
+    }
+
+    try {
+      const smsBody = `Hi ${patientName}, your NextDoorClinic appointment for ${service.name} at ${pharmacy.name} is confirmed. Ref: ${referenceCode}.`;
+      await sendSMS({ to: patientPhone, body: smsBody });
+    } catch (smsErr) {
+      console.warn("⚠️ Failed to send booking SMS:", smsErr);
+    }
+
+    try {
+      const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment booking at *${pharmacy.name}* has been confirmed!\n\n📋 *Treatment:* ${service.name}\n📅 *Booking Ref:* ${referenceCode}\n📍 *Clinic:* ${pharmacy.name}\n\nThank you for choosing NextDoorClinic!`;
+      await sendWhatsapp({ to: patientPhone, body: whatsappBody });
+    } catch (waErr) {
+      console.warn("⚠️ Failed to send booking WhatsApp:", waErr);
+    }
 
     // 6. Clean up OTP codes for this email
     await db.bookingOtp.deleteMany({

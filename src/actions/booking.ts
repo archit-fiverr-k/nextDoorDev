@@ -12,8 +12,63 @@ import {
 import { rateLimit } from "@/lib/rate-limit";
 import { headers } from "next/headers";
 import { hashPassword, verifyPassword } from "@/lib/crypto";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { localDateTimeToUTC } from "@/lib/timezone";
+import { sendVerifyOtp, checkVerifyOtp, sendSMS, sendWhatsapp } from "@/lib/twilio";
+
+async function sendAllBookingNotifications(params: {
+  patientName: string;
+  patientEmail: string;
+  patientPhone: string;
+  pharmacyName: string;
+  serviceName: string;
+  startTime: Date;
+  referenceCode: string;
+  manageUrl: string;
+}) {
+  const {
+    patientName,
+    patientEmail,
+    patientPhone,
+    pharmacyName,
+    serviceName,
+    startTime,
+    referenceCode,
+    manageUrl,
+  } = params;
+
+  // 1. Send Email Notification
+  try {
+    await sendBookingConfirmationEmail(patientEmail, {
+      patientName,
+      branchName: pharmacyName,
+      serviceName,
+      startTime,
+      bookingId: referenceCode,
+    });
+    console.log(`✅ [Email Dispatch] Sent confirmation to ${patientEmail}`);
+  } catch (emailErr) {
+    console.warn("⚠️ Failed to send confirmation email:", emailErr);
+  }
+
+  // 2. Send SMS Notification
+  try {
+    const smsBody = `Hi ${patientName}, your NextDoorClinic appointment for ${serviceName} at ${pharmacyName} is confirmed (Ref: ${referenceCode}). View details: ${manageUrl}`;
+    await sendSMS({ to: patientPhone, body: smsBody });
+    console.log(`✅ [SMS Dispatch] Sent SMS confirmation to ${patientPhone}`);
+  } catch (smsErr) {
+    console.warn("⚠️ Failed to send confirmation SMS:", smsErr);
+  }
+
+  // 3. Send WhatsApp Notification
+  try {
+    const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment booking at *${pharmacyName}* has been confirmed!\n\n📋 *Treatment:* ${serviceName}\n📅 *Booking Ref:* ${referenceCode}\n📍 *Clinic:* ${pharmacyName}\n\nManage or view your appointment details here:\n${manageUrl}\n\nThank you for choosing NextDoorClinic!`;
+    await sendWhatsapp({ to: patientPhone, body: whatsappBody });
+    console.log(`✅ [WhatsApp Dispatch] Sent WhatsApp confirmation to ${patientPhone}`);
+  } catch (waErr) {
+    console.warn("⚠️ Failed to send confirmation WhatsApp:", waErr);
+  }
+}
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -105,109 +160,336 @@ export async function getAvailableSlotsAction(
   }
 }
 
-export async function sendBookingOtpAction(email: string) {
+export async function generateManageToken(appointmentId: string, email: string) {
+  const secret = new TextEncoder().encode(
+    process.env.AUTH_SECRET || "super-secret-auth-key-for-local-development-only"
+  );
+  return await new SignJWT({ appointmentId, email })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .sign(secret);
+}
+
+export async function verifyManageToken(token: string) {
+  try {
+    const secret = new TextEncoder().encode(
+      process.env.AUTH_SECRET || "super-secret-auth-key-for-local-development-only"
+    );
+    const { payload } = await jwtVerify(token, secret);
+    return { success: true, payload: payload as { appointmentId: string; email: string } };
+  } catch (err) {
+    return { success: false, error: "Invalid or expired token" };
+  }
+}
+
+export async function sendBookingOtpAction(mobile: string, email?: string) {
   const clientIp = headers().get("x-forwarded-for") || "127.0.0.1";
-  const limiter = rateLimit(`sendotp:${clientIp}`, 5, 10 * 60 * 1000);
+  const limiter = rateLimit(`sendotp:${clientIp}`, 10, 10 * 60 * 1000);
   if (!limiter.success) {
     return {
       success: false,
-      error: "Too many requests. Please wait a few minutes before trying again.",
+      error: "Too many verification requests. Please wait a few minutes.",
     };
   }
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const cleanPhone = mobile.trim();
+  if (!cleanPhone || cleanPhone.replace(/\D/g, "").length < 8) {
+    return { success: false, error: "Please enter a valid mobile number." };
+  }
 
   try {
-    await db.bookingOtp.create({
+    const existingOtp = await db.bookingOtp.findFirst({
+      where: { phone: cleanPhone },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existingOtp) {
+      if (existingOtp.lastResentAt) {
+        const timeSinceLastResend = Date.now() - new Date(existingOtp.lastResentAt).getTime();
+        if (timeSinceLastResend < 30000) {
+          const waitSecs = Math.ceil((30000 - timeSinceLastResend) / 1000);
+          return {
+            success: false,
+            error: `Please wait ${waitSecs} seconds before requesting a new code.`,
+            cooldownRemaining: waitSecs,
+          };
+        }
+      }
+
+      if (existingOtp.resendCount >= 3) {
+        return {
+          success: false,
+          error:
+            "Maximum resend limit reached (3 resends max). Please check your mobile number or contact support.",
+          maxResendsExceeded: true,
+        };
+      }
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const resendCount = existingOtp ? existingOtp.resendCount + 1 : 0;
+
+    await db.bookingOtp.deleteMany({
+      where: { phone: cleanPhone, status: { in: ["PENDING", "FAILED", "EXPIRED"] } },
+    });
+
+    const otpRecord = await db.bookingOtp.create({
       data: {
-        email,
+        phone: cleanPhone,
+        email: email || null,
         code,
+        status: "PENDING",
+        attempts: 0,
+        resendCount,
+        lastResentAt: new Date(),
         expiresAt,
       },
     });
 
-    return { success: true };
+    const dispatchResult = await sendVerifyOtp({ to: cleanPhone, code });
+
+    if (dispatchResult.sid) {
+      await db.bookingOtp.update({
+        where: { id: otpRecord.id },
+        data: { verificationSid: dispatchResult.sid },
+      });
+    }
+
+    return {
+      success: true,
+      otpId: otpRecord.id,
+      expiresAt: expiresAt.toISOString(),
+      resendCount,
+      resendsRemaining: 3 - resendCount,
+    };
   } catch (error) {
     console.error("❌ sendBookingOtpAction failed:", error);
-    return { success: false, error: "Failed to send verification code" };
+    return { success: false, error: "Failed to send verification code." };
   }
 }
 
-export async function verifyOtpAndScheduleAction(data: {
+export async function verifyOtpAndCompleteBookingAction(data: {
   pharmacyId: string;
   serviceId: string;
   startTime: string;
   firstName: string;
   lastName: string;
-  phone: string;
+  mobile: string;
   email: string;
-  otp: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  townCity?: string;
+  postcode?: string;
+  dob?: string;
   notes?: string;
+  otpCode: string;
 }) {
+  const cleanPhone = data.mobile.trim();
+  const cleanCode = data.otpCode.trim();
+
+  if (cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) {
+    return { success: false, error: "Please enter a valid 6-digit verification code." };
+  }
+
   try {
-    const validOtp = await db.bookingOtp.findFirst({
-      where: {
-        email: data.email,
-        code: data.otp,
-        expiresAt: { gt: new Date() },
-      },
+    const otpRecord = await db.bookingOtp.findFirst({
+      where: { phone: cleanPhone, status: "PENDING" },
       orderBy: { createdAt: "desc" },
     });
 
-    if (!validOtp) {
-      return { success: false, error: "Invalid or expired verification code" };
+    if (!otpRecord) {
+      return {
+        success: false,
+        error: "Verification session expired or not found. Please request a new code.",
+        requiresNewOtp: true,
+      };
     }
+
+    if (new Date() > new Date(otpRecord.expiresAt)) {
+      await db.bookingOtp.update({
+        where: { id: otpRecord.id },
+        data: { status: "EXPIRED" },
+      });
+      return {
+        success: false,
+        error: "Verification code expired (5-minute limit). Please request a new code.",
+        requiresNewOtp: true,
+      };
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await db.bookingOtp.update({
+        where: { id: otpRecord.id },
+        data: { status: "FAILED" },
+      });
+      return {
+        success: false,
+        error: "Maximum verification attempts (5) exceeded. Please request a new code.",
+        attemptsExceeded: true,
+      };
+    }
+
+    const verifyCheck = await checkVerifyOtp({ to: cleanPhone, code: cleanCode });
+    const isCodeValid =
+      verifyCheck.method === "TWILIO_VERIFY" ? verifyCheck.success : otpRecord.code === cleanCode;
+
+    if (!isCodeValid) {
+      const newAttempts = otpRecord.attempts + 1;
+      const remainingAttempts = 5 - newAttempts;
+
+      if (newAttempts >= 5) {
+        await db.bookingOtp.update({
+          where: { id: otpRecord.id },
+          data: { attempts: newAttempts, status: "FAILED" },
+        });
+        return {
+          success: false,
+          error: "Maximum verification attempts reached. Please request a new code.",
+          attemptsExceeded: true,
+        };
+      }
+
+      await db.bookingOtp.update({
+        where: { id: otpRecord.id },
+        data: { attempts: newAttempts },
+      });
+
+      return {
+        success: false,
+        error: `Incorrect verification code. ${remainingAttempts} attempt(s) remaining.`,
+        remainingAttempts,
+      };
+    }
+
+    await db.bookingOtp.update({
+      where: { id: otpRecord.id },
+      data: { status: "VERIFIED", verifiedAt: new Date() },
+    });
 
     const startTimeUTC = new Date(data.startTime);
-    const service = await db.service.findUnique({ where: { id: data.serviceId } });
-    const pharmacy = await db.pharmacy.findUnique({ where: { id: data.pharmacyId } });
+    const serviceIds = data.serviceId.split(",");
+    const [services, pharmacy] = await Promise.all([
+      db.service.findMany({
+        where: { id: { in: serviceIds }, isActive: true },
+      }),
+      db.pharmacy.findUnique({ where: { id: data.pharmacyId } }),
+    ]);
 
-    if (!service || !pharmacy) {
-      return { success: false, error: "Service or Pharmacy not found" };
+    if (services.length === 0 || !pharmacy) {
+      return { success: false, error: "Service or Clinic not found." };
     }
 
-    const endTimeUTC = new Date(startTimeUTC.getTime() + service.duration * 60 * 1000);
+    const totalDuration = services.reduce((sum, s) => sum + s.duration, 0);
+    const fullAddress = data.addressLine1
+      ? `${data.addressLine1}${data.addressLine2 ? `, ${data.addressLine2}` : ""}, ${data.townCity || ""}, ${data.postcode || ""}`
+      : undefined;
 
-    let customer = await db.customer.findFirst({
-      where: { email: data.email },
-    });
-
-    if (!customer) {
-      customer = await db.customer.create({
-        data: {
-          pharmacyId: data.pharmacyId,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.phone,
+    const result = await db.$transaction(async (tx) => {
+      let customer = await tx.customer.findFirst({
+        where: {
+          OR: [{ phone: cleanPhone }, { email: data.email }],
         },
       });
-    }
 
-    const appointment = await db.appointment.create({
-      data: {
-        pharmacyId: data.pharmacyId,
-        customerId: customer.id,
-        serviceId: data.serviceId,
-        startTime: startTimeUTC,
-        endTime: endTimeUTC,
-        status: "PENDING",
-        notes: data.notes,
-      },
+      if (!customer) {
+        customer = await tx.customer.create({
+          data: {
+            pharmacyId: data.pharmacyId,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            email: data.email,
+            phone: cleanPhone,
+            address: fullAddress,
+            dateOfBirth: data.dob ? new Date(data.dob) : undefined,
+            smsNotifications: true,
+            emailNotifications: true,
+          },
+        });
+      } else {
+        customer = await tx.customer.update({
+          where: { id: customer.id },
+          data: {
+            firstName: data.firstName,
+            lastName: data.lastName,
+            phone: cleanPhone,
+            email: data.email,
+            ...(fullAddress ? { address: fullAddress } : {}),
+            ...(data.dob ? { dateOfBirth: new Date(data.dob) } : {}),
+          },
+        });
+      }
+
+      const createdAppointments = [];
+      let currentStart = startTimeUTC;
+
+      for (const svc of services) {
+        const svcEnd = new Date(currentStart.getTime() + svc.duration * 60 * 1000);
+        const appt = await tx.appointment.create({
+          data: {
+            pharmacyId: data.pharmacyId,
+            customerId: customer.id,
+            serviceId: svc.id,
+            startTime: currentStart,
+            endTime: svcEnd,
+            status: "CONFIRMED",
+            notes: data.notes,
+          },
+        });
+        createdAppointments.push(appt);
+        currentStart = svcEnd;
+      }
+
+      const firstAppt = createdAppointments[0];
+
+      await tx.patientNotification.create({
+        data: {
+          customerId: customer.id,
+          type: "BOOKING_CONFIRMED",
+          title: "Booking Confirmed",
+          message: `Your appointment for ${services.map((s) => s.name).join(", ")} at ${pharmacy.name} is confirmed!`,
+          link: `/patient/appointments/${firstAppt.id}`,
+        },
+      });
+
+      return { customer, appointment: firstAppt, services, pharmacy };
     });
 
-    await db.bookingOtp.deleteMany({
-      where: { email: data.email },
+    const referenceCode = `NDC-${result.appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
+    const manageToken = await generateManageToken(result.appointment.id, result.customer.email);
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const manageUrl = `${appBaseUrl}/manage-booking/${manageToken}`;
+
+    await sendAllBookingNotifications({
+      patientName: `${result.customer.firstName} ${result.customer.lastName}`,
+      patientEmail: result.customer.email,
+      patientPhone: cleanPhone,
+      pharmacyName: result.pharmacy.name,
+      serviceName: result.services.map((s) => s.name).join(", "),
+      startTime: startTimeUTC,
+      referenceCode,
+      manageUrl,
     });
 
     return {
       success: true,
-      appointmentId: appointment.id,
+      appointmentId: result.appointment.id,
+      referenceCode,
+      manageToken,
+      manageUrl,
+      patientEmail: result.customer.email,
+      pharmacyName: result.pharmacy.name,
+      pharmacyAddress: result.pharmacy.address,
+      serviceName: result.services.map((s) => s.name).join(", "),
+      startTime: startTimeUTC.toISOString(),
     };
   } catch (error) {
-    console.error("❌ Failed to verify OTP and schedule booking:", error);
-    return { success: false, error: "An unexpected error occurred during scheduling" };
+    console.error("❌ verifyOtpAndCompleteBookingAction failed:", error);
+    return {
+      success: false,
+      error: "An error occurred while confirming your booking. Please try again.",
+    };
   }
 }
 
@@ -461,11 +743,28 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
     });
 
     const referenceCode = `NDC-${transactionResult.appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
+    const manageToken = await generateManageToken(transactionResult.appointment.id, data.email);
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const manageUrl = `${appBaseUrl}/manage-booking/${manageToken}`;
+
+    await sendAllBookingNotifications({
+      patientName: `${data.firstName} ${data.lastName}`,
+      patientEmail: data.email,
+      patientPhone: data.mobile,
+      pharmacyName: pharmacy.name,
+      serviceName: services.map((s) => s.name).join(", "),
+      startTime: startTimeUTC,
+      referenceCode,
+      manageUrl,
+    });
 
     return {
       success: true,
       appointmentId: transactionResult.appointment.id,
       referenceCode,
+      manageToken,
+      manageUrl,
+      patientEmail: data.email,
       newAccountCreated: transactionResult.isNewAccount,
       email: data.email,
     };
@@ -482,5 +781,139 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
     }
     console.error("❌ createBookingDirectAction failed:", error);
     return { success: false, error: "An unexpected error occurred. Please try again." };
+  }
+}
+
+export async function createAccountPostBookingAction(data: { email: string; password: string }) {
+  if (!data.password || data.password.length < 6) {
+    return { success: false, error: "Password must be at least 6 characters long." };
+  }
+
+  try {
+    const customer = await db.customer.findFirst({
+      where: { email: data.email },
+    });
+
+    if (!customer) {
+      return { success: false, error: "Patient record not found." };
+    }
+
+    const passwordHash = hashPassword(data.password);
+    await db.customer.updateMany({
+      where: { email: data.email },
+      data: {
+        passwordHash,
+        emailVerified: true,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("❌ createAccountPostBookingAction failed:", error);
+    return { success: false, error: "Failed to create account." };
+  }
+}
+
+export async function getBookingByManageTokenAction(token: string) {
+  try {
+    const tokenResult = await verifyManageToken(token);
+    if (!tokenResult.success || !tokenResult.payload) {
+      return { success: false, error: "Invalid or expired manage booking link." };
+    }
+
+    const appointment = await db.appointment.findUnique({
+      where: { id: tokenResult.payload.appointmentId },
+      include: {
+        pharmacy: true,
+        service: true,
+        customer: true,
+      },
+    });
+
+    if (!appointment) {
+      return { success: false, error: "Appointment not found." };
+    }
+
+    const referenceCode = `NDC-${appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
+
+    return {
+      success: true,
+      data: {
+        id: appointment.id,
+        referenceCode,
+        status: appointment.status,
+        startTime: appointment.startTime.toISOString(),
+        endTime: appointment.endTime.toISOString(),
+        notes: appointment.notes,
+        pharmacy: {
+          id: appointment.pharmacy.id,
+          name: appointment.pharmacy.displayName || appointment.pharmacy.name,
+          address: appointment.pharmacy.address,
+          phone: appointment.pharmacy.phone,
+          email: appointment.pharmacy.email,
+          googleMapsUrl: appointment.pharmacy.googleMapsUrl,
+        },
+        service: {
+          id: appointment.service.id,
+          name: appointment.service.name,
+          description: appointment.service.description,
+          duration: appointment.service.duration,
+          price: Number(appointment.service.price),
+        },
+        patient: {
+          firstName: appointment.customer.firstName,
+          lastName: appointment.customer.lastName,
+          email: appointment.customer.email,
+          phone: appointment.customer.phone,
+        },
+      },
+    };
+  } catch (error) {
+    console.error("❌ getBookingByManageTokenAction failed:", error);
+    return { success: false, error: "Failed to load booking details." };
+  }
+}
+
+export async function cancelAppointmentByTokenAction(token: string, reason?: string) {
+  try {
+    const tokenResult = await verifyManageToken(token);
+    if (!tokenResult.success || !tokenResult.payload) {
+      return { success: false, error: "Invalid or expired link." };
+    }
+
+    const appointment = await db.appointment.findUnique({
+      where: { id: tokenResult.payload.appointmentId },
+      include: { customer: true, pharmacy: true, service: true },
+    });
+
+    if (!appointment) {
+      return { success: false, error: "Appointment not found." };
+    }
+
+    if (appointment.status === "CANCELLED") {
+      return { success: false, error: "Appointment is already cancelled." };
+    }
+
+    await db.appointment.update({
+      where: { id: appointment.id },
+      data: {
+        status: "CANCELLED",
+        notes: reason ? `Cancellation reason: ${reason}` : appointment.notes,
+      },
+    });
+
+    await db.patientNotification.create({
+      data: {
+        customerId: appointment.customerId,
+        type: "BOOKING_CANCELLED",
+        title: "Appointment Cancelled",
+        message: `Your appointment for ${appointment.service.name} at ${appointment.pharmacy.name} has been cancelled.`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("❌ cancelAppointmentByTokenAction failed:", error);
+    return { success: false, error: "Failed to cancel appointment." };
   }
 }

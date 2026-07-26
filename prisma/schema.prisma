@@ -328,12 +328,20 @@ model AuditLog {
 }
 
 model BookingOtp {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email     String
-  code      String
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone           String    @default("")
+  email           String?
+  code            String
+  verificationSid String?   @map("verification_sid")
+  status          String    @default("PENDING") // PENDING, VERIFIED, EXPIRED, FAILED
+  attempts        Int       @default(0)
+  resendCount     Int       @default(0) @map("resend_count")
+  lastResentAt    DateTime? @map("last_resent_at")
+  expiresAt       DateTime  @map("expires_at")
+  verifiedAt      DateTime? @map("verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
+  @@index([phone])
   @@index([email])
   @@map("booking_otps")
 }
@@ -390,6 +398,7 @@ model SystemSetting {
   twilioAuthToken              String?  @map("twilio_auth_token")
   twilioPhoneNumber            String?  @map("twilio_phone_number")
   twilioWhatsappNumber         String?  @map("twilio_whatsapp_number")
+  twilioVerifyServiceSid       String?  @map("twilio_verify_service_sid")
 
   @@map("system_settings")
 }

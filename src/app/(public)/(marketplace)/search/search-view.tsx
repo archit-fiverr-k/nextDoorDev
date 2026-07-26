@@ -20,9 +20,13 @@ import {
   Building2,
   ChevronRight,
   Filter,
+  Navigation,
+  CalendarCheck,
+  X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { SearchBar } from "../search-bar";
-import { getDistanceMiles } from "@/lib/geocoding";
+import { getDistanceMiles, geocodeLocation } from "@/lib/geocoding";
 import { slugify } from "@/lib/slug";
 import {
   logSearchQueryAction,
@@ -71,6 +75,101 @@ interface SearchViewProps {
   allServiceNames: string[];
 }
 
+function levenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+const SYNONYMS_MAP: Record<string, string[]> = {
+  vaccine: [
+    "vacine",
+    "vaccin",
+    "vacination",
+    "vaccination",
+    "vax",
+    "shot",
+    "jab",
+    "booster",
+    "immunisation",
+    "immunization",
+  ],
+  flu: ["fluu", "flue", "influenza", "winter", "booster"],
+  blood: [
+    "blod",
+    "bld",
+    "phlebotomy",
+    "biomarker",
+    "screening",
+    "screen",
+    "lab",
+    "cholesterol",
+    "lipid",
+    "thyroid",
+  ],
+  ear: ["earwax", "earcare", "microsuction", "syringing", "hearing", "wax", "clearance"],
+  travel: ["travle", "traveller", "abroad", "yellow", "fever", "malaria", "typhoid", "rabies"],
+  pressure: ["bp", "cardio", "hypertension", "heart", "cardiovascular"],
+  weight: ["weght", "management", "loss", "slimming", "ozempic", "mounjaro", "saxenda", "wegovy"],
+  london: ["londn", "lond", "central london", "westminster", "camden"],
+  manchester: ["manchster", "manc", "salford"],
+  leeds: ["leed", "briggate", "west yorkshire"],
+  birmingham: ["birminghm", "bullring", "midlands"],
+  bristol: ["bristl", "clifton"],
+};
+
+function isFuzzyMatch(targetText: string, queryText: string): boolean {
+  if (!queryText || !queryText.trim()) return true;
+  const target = targetText.toLowerCase().trim();
+  const query = queryText.toLowerCase().trim();
+
+  // 1. Direct substring check
+  if (target.includes(query) || query.includes(target)) return true;
+
+  // 2. Tokenized check
+  const queryTokens = query.split(/\s+/).filter(Boolean);
+  const targetTokens = target.split(/[\s,.\-\/]+/).filter(Boolean);
+
+  return queryTokens.every((qToken) => {
+    if (targetTokens.some((tToken) => tToken.includes(qToken) || qToken.includes(tToken))) {
+      return true;
+    }
+
+    for (const [key, synonyms] of Object.entries(SYNONYMS_MAP)) {
+      const isQueryKeyOrSyn = qToken === key || synonyms.includes(qToken);
+      if (isQueryKeyOrSyn) {
+        if (target.includes(key) || synonyms.some((syn) => target.includes(syn))) {
+          return true;
+        }
+      }
+    }
+
+    return targetTokens.some((tToken) => {
+      if (Math.abs(tToken.length - qToken.length) > 3) return false;
+      const maxDist = qToken.length <= 4 ? 1 : qToken.length <= 7 ? 2 : 3;
+      return levenshteinDistance(qToken, tToken) <= maxDist;
+    });
+  });
+}
+
 export function SearchView({
   initialLocation,
   initialLat,
@@ -80,6 +179,12 @@ export function SearchView({
   categories,
   allServiceNames,
 }: SearchViewProps) {
+  const router = useRouter();
+
+  // Active search query states
+  const [locationFilter, setLocationFilter] = useState<string>(initialLocation || "");
+  const [serviceFilter, setServiceFilter] = useState<string>(initialService || "");
+
   // Coordinates of search center
   const [centerCoords, setCenterCoords] = useState<{ lat: number; lng: number } | null>(
     initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
@@ -91,9 +196,11 @@ export function SearchView({
   // Highlighted provider from map marker click
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  // Mobile filter drawer state
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
   // Filter states
   const [distanceFilter, setDistanceFilter] = useState<string>("25");
-  const [serviceFilter, setServiceFilter] = useState<string>(initialService);
   const [openTodayFilter, setOpenTodayFilter] = useState<boolean>(false);
   const [availableTodayFilter, setAvailableTodayFilter] = useState<boolean>(false);
   const [ratingFilter, setRatingFilter] = useState<string>("");
@@ -126,7 +233,7 @@ export function SearchView({
     return parts.length > 1 ? parts[parts.length - 2].trim() : "UK";
   };
 
-  // 1. Process client-side filtering and sorting
+  // 1. Process client-side filtering and sorting with fuzzy typo tolerance
   const processedProviders = React.useMemo(() => {
     let result = initialProviders.map((p) => {
       let distance = 9999;
@@ -136,17 +243,28 @@ export function SearchView({
       return { ...p, distance };
     });
 
-    if (distanceFilter !== "anywhere" && centerCoords) {
+    // Location text and distance radius filtering
+    const locQuery = (locationFilter || "").trim();
+    if (locQuery) {
+      result = result.filter((p) => {
+        if (centerCoords && p.distance !== 9999) {
+          const radius = distanceFilter !== "anywhere" ? parseFloat(distanceFilter) : 100;
+          if (p.distance <= radius) return true;
+        }
+        const fullLocationText = `${p.name} ${p.displayName || ""} ${p.address} ${p.city || ""} ${p.postcode || ""}`;
+        return isFuzzyMatch(fullLocationText, locQuery);
+      });
+    } else if (distanceFilter !== "anywhere" && centerCoords) {
       const radius = parseFloat(distanceFilter);
       result = result.filter((p) => p.distance <= radius);
     }
 
-    if (serviceFilter) {
-      const queryWords = serviceFilter.toLowerCase().split(/\s+/).filter(Boolean);
+    // Service query with fuzzy typo-tolerant matching
+    if (serviceFilter && serviceFilter.trim()) {
       result = result.filter((p) =>
         p.services.some((s) => {
-          const serviceNameLower = s.name.toLowerCase();
-          return queryWords.every((word) => serviceNameLower.includes(word));
+          const fullServiceText = `${s.name} ${s.description || ""}`;
+          return isFuzzyMatch(fullServiceText, serviceFilter);
         })
       );
     }
@@ -171,7 +289,11 @@ export function SearchView({
 
     // Apply sorting
     result.sort((a, b) => {
-      if (sortBy === "distance") return a.distance - b.distance;
+      if (sortBy === "distance") {
+        if (a.distance !== 9999 && b.distance !== 9999) {
+          return a.distance - b.distance;
+        }
+      }
       if (sortBy === "rating") return b.ratingScore - a.ratingScore;
       if (sortBy === "earliest") {
         if (!a.earliestAppointmentDate) return 1;
@@ -185,6 +307,7 @@ export function SearchView({
     return result;
   }, [
     initialProviders,
+    locationFilter,
     centerCoords,
     distanceFilter,
     serviceFilter,
@@ -197,6 +320,7 @@ export function SearchView({
 
   // Reset all filters helper
   const handleResetFilters = () => {
+    setLocationFilter("");
     setDistanceFilter("25");
     setServiceFilter("");
     setOpenTodayFilter(false);
@@ -204,6 +328,7 @@ export function SearchView({
     setRatingFilter("");
     setMaxPrice("");
     setSortBy("distance");
+    router.push("/search", { scroll: false });
   };
 
   // Log search queries to analytics DB
@@ -216,7 +341,7 @@ export function SearchView({
       const duration = Date.now() - startTime;
       const detectedType = centerCoords ? "GEOLOCATED" : "TEXT";
       logSearchQueryAction(
-        initialLocation || "General Search",
+        locationFilter || "General Search",
         detectedType,
         processedProviders.length,
         duration,
@@ -225,20 +350,42 @@ export function SearchView({
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [initialLocation, centerCoords, processedProviders.length]);
+  }, [locationFilter, centerCoords, processedProviders.length]);
 
   const handleLocationSearch = (
     locName: string,
     svcName?: string,
     coords?: { lat: number; lng: number }
   ) => {
+    const newLoc = locName || "";
+    const newSvc = svcName !== undefined ? svcName : serviceFilter;
+
+    setLocationFilter(newLoc);
+    setServiceFilter(newSvc);
+
     if (coords) {
       setCenterCoords(coords);
-    } else if (locName && locName.toLowerCase() !== initialLocation.toLowerCase()) {
-      window.location.href = `/search?location=${encodeURIComponent(locName)}${
-        svcName ? `&service=${encodeURIComponent(svcName)}` : ""
-      }`;
+    } else if (newLoc && newLoc.toLowerCase() !== "current location") {
+      const geocoded = geocodeLocation(newLoc);
+      if (geocoded) {
+        setCenterCoords({ lat: geocoded.lat, lng: geocoded.lng });
+      } else {
+        setCenterCoords(null);
+      }
+    } else {
+      setCenterCoords(null);
     }
+
+    const queryParams = new URLSearchParams();
+    if (newLoc) queryParams.set("location", newLoc);
+    if (newSvc) queryParams.set("service", newSvc);
+    if (coords) {
+      queryParams.set("lat", coords.lat.toString());
+      queryParams.set("lng", coords.lng.toString());
+    }
+
+    const newUrl = `/search${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    router.push(newUrl, { scroll: false });
   };
 
   const handleCallbackSubmit = async (e: React.FormEvent) => {
@@ -291,9 +438,10 @@ export function SearchView({
       const existingScript = document.getElementById("google-maps-script");
       if (existingScript) return;
 
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
       const script = document.createElement("script");
       script.id = "google-maps-script";
-      script.src = `https://maps.googleapis.com/maps/api/js?key=&libraries=places`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
       script.async = true;
       script.defer = true;
       script.onload = () => setMapsLoaded(true);
@@ -323,34 +471,59 @@ export function SearchView({
       googleMapInstance.current.setCenter(mapCenter);
     }
 
-    markersRef.current.forEach((marker) => marker.setMap(null));
+    markersRef.current.forEach((marker) => {
+      if (marker.setMap) marker.setMap(null);
+      else marker.map = null;
+    });
     markersRef.current = [];
 
-    if (centerCoords) {
-      new google.maps.Marker({
-        position: centerCoords,
+    const createMarker = (
+      position: { lat: number; lng: number },
+      title: string,
+      iconUrl: string
+    ) => {
+      if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+        const pinImg = document.createElement("img");
+        pinImg.src = iconUrl;
+        pinImg.style.width = "32px";
+        pinImg.style.height = "32px";
+        return new google.maps.marker.AdvancedMarkerElement({
+          position,
+          map: googleMapInstance.current,
+          title,
+          content: pinImg,
+        });
+      }
+      return new google.maps.Marker({
+        position,
         map: googleMapInstance.current,
-        title: "Your Search Location",
-        icon: {
-          url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-        },
+        title,
+        icon: { url: iconUrl },
       });
+    };
+
+    if (centerCoords) {
+      const centerMarker = createMarker(
+        centerCoords,
+        "Your Search Location",
+        "https://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+      );
+      markersRef.current.push(centerMarker);
     }
 
     processedProviders.forEach((p) => {
       if (!p.latitude || !p.longitude) return;
 
-      const marker = new google.maps.Marker({
-        position: { lat: p.latitude, lng: p.longitude },
-        map: googleMapInstance.current,
-        title: p.displayName || p.name,
-        icon: {
-          url:
-            p.id === highlightedId
-              ? "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
-              : "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-        },
-      });
+      const iconUrl =
+        p.id === highlightedId
+          ? "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
+          : "https://maps.google.com/mapfiles/ms/icons/green-dot.png";
+
+      const marker = createMarker(
+        { lat: p.latitude, lng: p.longitude },
+        p.displayName || p.name,
+        iconUrl
+      );
 
       const infoWindow = new google.maps.InfoWindow({
         content: `
@@ -368,14 +541,16 @@ export function SearchView({
         `,
       });
 
-      marker.addListener("click", () => {
-        setHighlightedId(p.id);
-        const element = document.getElementById(`pharmacy-card-${p.id}`);
-        if (element) {
-          element.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-        infoWindow.open(googleMapInstance.current, marker);
-      });
+      if (marker.addListener) {
+        marker.addListener("click", () => {
+          setHighlightedId(p.id);
+          const element = document.getElementById(`pharmacy-card-${p.id}`);
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          infoWindow.open(googleMapInstance.current, marker);
+        });
+      }
 
       markersRef.current.push(marker);
     });
@@ -471,10 +646,178 @@ export function SearchView({
       </div>
 
       {/* MAIN CONTAINER */}
-      <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 md:px-8">
+        {/* MOBILE FILTER & SORT BAR (< lg) */}
+        <div className="shadow-xs mb-4 flex items-center justify-between gap-2 rounded-2xl border border-slate-200/90 bg-white p-2.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen(true)}
+            className="shadow-2xs flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-black text-slate-800 transition active:scale-95"
+          >
+            <Filter className="h-4 w-4 text-emerald-600" />
+            <span>Filter Clinics</span>
+            {hasActiveFilters && <span className="flex h-2 w-2 rounded-full bg-emerald-500" />}
+          </button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400">Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="h-8 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
+            >
+              <option value="distance">Nearest</option>
+              <option value="rating">Highest Rated</option>
+              <option value="earliest">Earliest Date</option>
+              <option value="popular">Most Popular</option>
+            </select>
+          </div>
+        </div>
+
+        {/* MOBILE FILTER DRAWER OVERLAY (< lg) */}
+        {mobileFiltersOpen && (
+          <div className="backdrop-blur-xs fixed inset-0 z-50 flex flex-col justify-end bg-slate-900/60 lg:hidden">
+            <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl duration-200 animate-in slide-in-from-bottom dark:bg-zinc-900">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-zinc-800">
+                <h3 className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
+                  <Filter className="h-4 w-4 text-emerald-600" /> Filter Healthcare Clinics
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="rounded-full bg-slate-100 p-2 text-slate-500 hover:text-slate-900 dark:bg-zinc-800 dark:text-zinc-400"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-xs">
+                {/* Radius */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
+                    Max Distance
+                  </label>
+                  <select
+                    value={distanceFilter}
+                    onChange={(e) => setDistanceFilter(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    <option value="5">Within 5 miles</option>
+                    <option value="10">Within 10 miles</option>
+                    <option value="25">Within 25 miles</option>
+                    <option value="50">Within 50 miles</option>
+                    <option value="anywhere">All Locations (UK)</option>
+                  </select>
+                </div>
+
+                {/* Treatment */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
+                    Clinical Treatment
+                  </label>
+                  <select
+                    value={serviceFilter}
+                    onChange={(e) => setServiceFilter(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    <option value="">All Treatments</option>
+                    {allServiceNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Minimum Rating */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
+                    Minimum Rating
+                  </label>
+                  <select
+                    value={ratingFilter}
+                    onChange={(e) => setRatingFilter(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    <option value="">Any Rating</option>
+                    <option value="4.0">4.0+ Stars</option>
+                    <option value="4.5">4.5+ Stars</option>
+                    <option value="4.8">4.8+ Stars</option>
+                  </select>
+                </div>
+
+                {/* Max Price */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
+                    Max Price (£)
+                  </label>
+                  <select
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    <option value="">Any Price</option>
+                    <option value="20">Under £20</option>
+                    <option value="50">Under £50</option>
+                    <option value="100">Under £100</option>
+                  </select>
+                </div>
+
+                {/* Checkbox Options */}
+                <div className="space-y-3 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={openTodayFilter}
+                      onChange={(e) => setOpenTodayFilter(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                      Open Today
+                    </span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={availableTodayFilter}
+                      onChange={(e) => setAvailableTodayFilter(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                      Slots Available Today
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-4 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetFilters();
+                    setMobileFiltersOpen(false);
+                  }}
+                  className="flex-1 rounded-xl border border-slate-300 py-3 text-xs font-extrabold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200"
+                >
+                  Reset All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="flex-1 rounded-xl bg-emerald-600 py-3 text-xs font-extrabold text-white shadow-md transition hover:bg-emerald-500 active:scale-95"
+                >
+                  Show {processedProviders.length} Clinics
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-6 lg:grid-cols-12">
-          {/* SIDEBAR FILTERS */}
-          <aside className="lg:col-span-3">
+          {/* DESKTOP SIDEBAR FILTERS (hidden lg:block) */}
+          <aside className="hidden lg:col-span-3 lg:block">
             <div className="shadow-xs rounded-lg border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
                 <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
@@ -596,6 +939,25 @@ export function SearchView({
 
           {/* RESULTS CONTENT */}
           <main className="space-y-4 lg:col-span-9">
+            {/* Search Context Banner */}
+            {serviceFilter && (
+              <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 px-5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-500">You searched for:</span>
+                  <span className="rounded-full border border-emerald-300 bg-emerald-200/60 px-2.5 py-1 font-extrabold text-emerald-950">
+                    {serviceFilter}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setServiceFilter("")}
+                  className="flex items-center gap-1 font-bold text-emerald-800 hover:underline"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Clear Context
+                </button>
+              </div>
+            )}
+
             {processedProviders.length === 0 ? (
               /* EMPTY STATE */
               <div className="space-y-6">
@@ -731,148 +1093,176 @@ export function SearchView({
                   {processedProviders.map((p) => {
                     const isHighlighted = p.id === highlightedId;
 
+                    // Resolve matched service from filter
+                    const matchedService = serviceFilter
+                      ? p.services.find((s) =>
+                          s.name.toLowerCase().includes(serviceFilter.toLowerCase())
+                        ) || p.services[0]
+                      : p.services[0];
+
+                    const matchedServicesList = serviceFilter
+                      ? p.services.filter((s) =>
+                          s.name.toLowerCase().includes(serviceFilter.toLowerCase())
+                        )
+                      : p.services;
+
                     return (
                       <div
                         id={`pharmacy-card-${p.id}`}
                         key={p.id}
-                        className={`rounded-lg border bg-white p-5 transition-all dark:bg-zinc-900 ${
+                        className={`shadow-xs rounded-2xl border bg-white p-4 transition-all sm:p-5 ${
                           isHighlighted
-                            ? "border-amber-500 ring-1 ring-amber-500"
-                            : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+                            ? "border-emerald-500 ring-2 ring-emerald-500/20"
+                            : "border-slate-200/90 hover:border-emerald-300 hover:shadow-md"
                         }`}
                       >
-                        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                           {/* Main Info */}
-                          <div className="flex min-w-0 items-start gap-4">
+                          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
                             {p.logoUrl ? (
                               <img
                                 src={p.logoUrl}
                                 alt={p.name}
-                                className="h-10 w-10 shrink-0 rounded border border-slate-200 bg-white object-contain p-0.5 dark:border-zinc-800"
+                                className="shadow-xs h-10 w-10 shrink-0 rounded-2xl border border-slate-200 bg-white object-contain p-1 sm:h-12 sm:w-12"
                               />
                             ) : (
                               <div
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-xs font-bold uppercase text-white"
-                                style={{ backgroundColor: p.brandColor || "#000e35" }}
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-black uppercase text-white shadow-sm sm:h-12 sm:w-12"
+                                style={{ backgroundColor: p.brandColor || "#10B981" }}
                               >
                                 {p.name.substring(0, 2)}
                               </div>
                             )}
 
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                                <h3 className="text-sm font-black leading-snug text-slate-900 sm:text-base">
                                   {p.displayName || p.name}
                                 </h3>
 
-                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-zinc-400">
-                                  <MapPin className="h-3 w-3 text-slate-400" />
-                                  {p.distance !== 9999
-                                    ? `${p.distance.toFixed(1)} miles`
-                                    : getCity(p.address)}
-                                </span>
-
-                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                  <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                                  NHS Partner
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                                  <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
+                                  GPhC Partner
                                 </span>
                               </div>
 
-                              <p className="truncate text-xs text-slate-500 dark:text-zinc-400">
+                              <p className="truncate text-xs font-medium text-slate-500">
                                 {p.address}
                               </p>
 
-                              {/* Rating & Reviews */}
-                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                                <div className="flex items-center text-amber-500">
-                                  <Star className="h-3.5 w-3.5 fill-current" />
-                                  <span className="ml-1 font-bold">{p.ratingScore.toFixed(1)}</span>
-                                </div>
-                                <span className="text-slate-400">•</span>
-                                <span className="text-slate-500 dark:text-zinc-400">
-                                  {p.ratingCount} reviews
+                              {/* Distance & Reviews Badges */}
+                              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                  <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                  {p.distance !== 9999
+                                    ? `${p.distance.toFixed(1)} mi away`
+                                    : getCity(p.address)}
                                 </span>
+
+                                <div className="flex items-center rounded-md border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-amber-500">
+                                  <Star className="h-3.5 w-3.5 fill-current" />
+                                  <span className="ml-1 font-bold text-amber-900">
+                                    {p.ratingScore.toFixed(1)}
+                                  </span>
+                                  <span className="ml-1 text-[10px] text-amber-700">
+                                    ({p.ratingCount})
+                                  </span>
+                                </div>
                               </div>
 
-                              {/* Treatment List */}
-                              <div className="flex flex-wrap gap-1.5 pt-2">
-                                {p.services.map((svc) => (
-                                  <Link
-                                    key={svc.id}
-                                    href={`/${p.slug}/${slugify(svc.name)}`}
-                                    className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-300"
-                                  >
-                                    <span>{svc.name}</span>
-                                    <span className="font-semibold text-slate-900 dark:text-white">
-                                      £{svc.price.toFixed(2)}
+                              {/* Matched Service Context Highlight */}
+                              {matchedService && (
+                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs font-semibold text-emerald-950">
+                                  <span className="flex min-w-0 items-center gap-1.5">
+                                    <Check className="h-4 w-4 shrink-0 text-emerald-600" />
+                                    <span className="truncate">
+                                      <strong>{matchedService.name}</strong>
                                     </span>
-                                  </Link>
-                                ))}
-                              </div>
+                                  </span>
+                                  <span className="shrink-0 font-extrabold text-emerald-700">
+                                    £{matchedService.price.toFixed(2)} ({matchedService.duration}m)
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Multiple Matched Services Chips */}
+                              {matchedServicesList.length > 1 && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  <span className="self-center text-[10px] font-bold uppercase text-slate-400">
+                                    Options:
+                                  </span>
+                                  {matchedServicesList.map((svc) => (
+                                    <Link
+                                      key={svc.id}
+                                      href={`/book/${p.slug}?serviceId=${svc.id}`}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-800 transition hover:border-emerald-500 hover:bg-emerald-50"
+                                    >
+                                      <span>{svc.name}</span>
+                                      <span className="font-extrabold text-emerald-700">
+                                        £{svc.price.toFixed(2)}
+                                      </span>
+                                    </Link>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* Right Status & Action */}
-                          <div className="flex shrink-0 flex-row items-center justify-between gap-4 border-t border-slate-100 pt-3 dark:border-zinc-800 md:flex-col md:items-end md:justify-start md:border-t-0 md:pt-0">
-                            <div className="space-y-0.5 text-left md:text-right">
-                              <div className="flex items-center gap-1.5 text-xs font-medium">
+                          {/* Status & Mobile Responsive Action Buttons */}
+                          <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 pt-3 lg:items-end lg:justify-between lg:border-t-0 lg:pt-0">
+                            <div className="flex items-center justify-between gap-1 lg:flex-col lg:items-end lg:justify-start">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold">
                                 <span
                                   className={`h-2 w-2 rounded-full ${
                                     p.isOpenToday ? "bg-emerald-500" : "bg-rose-500"
                                   }`}
                                 />
-                                <span className="font-semibold text-slate-800 dark:text-zinc-200">
+                                <span className="font-bold text-slate-800">
                                   {p.isOpenToday ? "Open Today" : "Closed Today"}
                                 </span>
                               </div>
 
-                              <div className="text-xs font-medium text-slate-600 dark:text-zinc-400">
-                                {p.slotsToday > 0 ? (
-                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                                    {p.slotsToday} slots available today
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-500">Fully booked today</span>
-                                )}
-                              </div>
-
                               {p.earliestAppointment && (
-                                <div className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                                <div className="text-[11px] font-semibold text-slate-500">
                                   Earliest:{" "}
-                                  <span className="font-bold text-slate-900 dark:text-white">
+                                  <span className="font-bold text-emerald-700">
                                     {p.earliestAppointment}
                                   </span>
                                 </div>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <Link
-                                href={`/provider/${p.slug}`}
-                                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                              >
-                                Profile
-                              </Link>
+                            {/* Action Buttons: Book Now (Primary) vs View Service (Secondary) */}
+                            {matchedService && (
+                              <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center lg:w-auto">
+                                <Link
+                                  href={`/book/${p.slug}?serviceId=${matchedService.id}`}
+                                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3 text-center text-xs font-extrabold text-white shadow-md transition hover:bg-emerald-500 active:scale-95 sm:py-2.5"
+                                >
+                                  <span>Book Now</span>
+                                  <ChevronRight className="h-4 w-4" />
+                                </Link>
 
-                              {(() => {
-                                const matchedService = serviceFilter
-                                  ? p.services.find((s) =>
-                                      s.name.toLowerCase().includes(serviceFilter.toLowerCase())
-                                    ) || p.services[0]
-                                  : p.services[0];
-                                const targetUrl = matchedService
-                                  ? `/${p.slug}/${slugify(matchedService.name)}`
-                                  : `/provider/${p.slug}`;
-                                return (
+                                <div className="flex items-center gap-2">
                                   <Link
-                                    href={targetUrl}
-                                    className="rounded bg-[#000e35] px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-slate-800"
+                                    href={`/${p.slug}/${slugify(matchedService.name)}`}
+                                    className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-xs font-bold text-slate-700 transition hover:bg-slate-50 sm:flex-none sm:py-2.5"
                                   >
-                                    Book Appointment
+                                    <span>View Service</span>
                                   </Link>
-                                );
-                              })()}
-                            </div>
+
+                                  <a
+                                    href={`https://maps.google.com/?q=${encodeURIComponent(`${p.name} ${p.address}`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded-xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:border-emerald-300 hover:text-emerald-600 sm:p-2.5"
+                                    title="Get Directions"
+                                  >
+                                    <Navigation className="h-4 w-4" />
+                                  </a>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

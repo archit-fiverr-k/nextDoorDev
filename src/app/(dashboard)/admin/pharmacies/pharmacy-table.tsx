@@ -43,6 +43,7 @@ import {
   ExternalLink,
   Ban,
   CheckSquare,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -261,6 +262,15 @@ export function PharmacyTable({ data, role }: PharmacyTableProps) {
                   <Copy className="h-3.5 w-3.5 text-slate-400" />
                 )}
               </Button>
+
+              <Link
+                href={`/admin/providers/${row.id}?tab=url-export`}
+                className="shadow-xs inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                title="Website URL Export Blueprint"
+              >
+                <FileText className="mr-1 h-3.5 w-3.5 text-emerald-600" />
+                <span>Export URLs</span>
+              </Link>
 
               {role === "super_admin" && (
                 <>

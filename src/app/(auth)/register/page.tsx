@@ -17,6 +17,10 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 export default function RegisterPatientPage() {
@@ -32,6 +36,7 @@ export default function RegisterPatientPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
 
@@ -45,7 +50,7 @@ export default function RegisterPatientPage() {
 
   const handleSendOtp = () => {
     if (!phone || phone.trim().length < 5) {
-      setError("Please supply a valid mobile number to send OTP.");
+      setError("Please supply a valid UK mobile number to send OTP.");
       return;
     }
     setError(null);
@@ -55,7 +60,7 @@ export default function RegisterPatientPage() {
       setGeneratedOtp(code);
       setOtpSent(true);
       setSendingOtp(false);
-    }, 1200);
+    }, 1000);
   };
 
   const handleVerifyOtp = () => {
@@ -73,7 +78,7 @@ export default function RegisterPatientPage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError("Passwords do not match. Please re-enter.");
       return;
     }
 
@@ -83,7 +88,7 @@ export default function RegisterPatientPage() {
     }
 
     if (!acceptTerms || !acceptPrivacy) {
-      setError("You must accept the terms of service and privacy policy.");
+      setError("You must accept the terms of service and privacy policy to continue.");
       return;
     }
 
@@ -100,7 +105,7 @@ export default function RegisterPatientPage() {
       });
 
       if (!res.success) {
-        setError(res.error || "Registration failed.");
+        setError(res.error || "Registration failed. Please try again.");
       } else {
         setSuccess(true);
         setTimeout(() => {
@@ -111,52 +116,68 @@ export default function RegisterPatientPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-slate-50 font-sans dark:bg-zinc-950 lg:grid-cols-[1fr_1.1fr]">
-      {/* ================= LEFT SIDE: PREMIUM BRAND SHOWCASE ================= */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-brand-navy p-12 text-white lg:flex">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.12),transparent_50%)]" />
+    <div className="grid min-h-screen bg-slate-50 font-sans dark:bg-zinc-950 lg:grid-cols-[1.1fr_1fr]">
+      {/* ========================================================================= */}
+      {/* LEFT SIDE: EDITORIAL BRAND SHOWCASE */}
+      {/* ========================================================================= */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-[#000e35] via-[#0F172A] to-slate-900 p-12 text-white lg:flex">
+        {/* Soft Background Mesh */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.18),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.15),transparent_55%)]" />
 
+        {/* Brand Header */}
         <div className="relative z-10">
-          <Link href="/" className="inline-block">
-            <img
-              src="/assets/header-logo.png"
-              alt="NextDoorClinic"
-              className="h-10 w-auto object-contain brightness-0 invert"
-            />
+          <Link href="/" className="inline-flex items-center space-x-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#10B981] text-base font-black text-white shadow-lg ring-4 ring-emerald-500/20">
+              NC
+            </div>
+            <div>
+              <span className="block text-base font-black tracking-tight text-white">
+                NextDoorClinic
+              </span>
+              <span className="block text-[9px] font-extrabold uppercase tracking-widest text-emerald-400">
+                Patient Healthcare Portal
+              </span>
+            </div>
           </Link>
         </div>
 
-        <div className="relative z-10 my-auto max-w-lg space-y-10">
-          <div className="space-y-4">
-            <span className="text-emerald-450 inline-flex select-none items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
-              <Heart className="size-3" /> Dedicated Patient Portal
+        {/* Middle Hero Showcase */}
+        <div className="relative z-10 my-auto max-w-lg space-y-8">
+          <div className="space-y-3">
+            <span className="inline-flex select-none items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300 backdrop-blur-md">
+              <Heart className="h-3.5 w-3.5 text-[#10B981]" /> Personal Healthcare Companion
             </span>
-            <h1 className="font-display text-4xl font-black leading-[1.1] tracking-tight sm:text-5xl">
-              Your family&apos;s health, in one place.
+
+            <h1 className="font-display text-4xl font-black leading-tight tracking-tight text-white lg:text-5xl">
+              Your health, effortlessly managed.
             </h1>
-            <p className="text-slate-350 text-sm font-normal leading-relaxed">
-              Create an account to manage appointments, keep track of clinical reports, rebook
-              treatments, and coordinate health schedules.
+
+            <p className="text-xs font-medium leading-relaxed text-slate-300 sm:text-sm">
+              Create a free patient profile to book same-day consultations, access clinical reports,
+              reorder treatments, and store medical records securely.
             </p>
           </div>
 
+          {/* Feature List */}
           <div className="space-y-4 pt-2">
             {[
               {
-                title: "One-Tap Rebooking",
-                desc: "Instantly rebook repeating services such as flu vaccines and ear microsuction.",
+                title: "Instant Same-Day Bookings",
+                desc: "Book ear wax removal, blood tests, and travel vaccines in under 30 seconds.",
               },
               {
-                title: "Secure Health Records",
-                desc: "Access clinical notes, prescription statuses, and CQC registration details.",
+                title: "GPhC & NHS Verified Partners",
+                desc: "100% accredited UK pharmacies with transparent upfront pricing.",
               },
               {
-                title: "Unified Family Profiles",
-                desc: "Manage bookings for children and dependents from a single account.",
+                title: "Unified Family Health Records",
+                desc: "Access consultation history and medical certificates from any device.",
               },
             ].map((pt, idx) => (
               <div key={idx} className="flex gap-3">
-                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-400" />
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-[#10B981]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
                 <div className="space-y-0.5">
                   <h4 className="text-xs font-black uppercase tracking-wider text-white">
                     {pt.title}
@@ -168,74 +189,92 @@ export default function RegisterPatientPage() {
           </div>
         </div>
 
-        <div className="relative z-10 border-t border-white/10 pt-6">
+        {/* Testimonial Footer */}
+        <div className="relative z-10 border-t border-slate-800 pt-6">
           <div className="space-y-3">
-            <div className="flex gap-1">
+            <div className="flex gap-1 text-amber-400">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className="size-3.5 fill-emerald-500 text-emerald-500" />
+                <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
               ))}
             </div>
-            <p className="text-slate-355 relative text-[12px] font-medium italic leading-relaxed">
-              <Quote className="pointer-events-none absolute -left-2 -top-3 size-8 text-white/5" />
-              &quot;NextDoorClinic makes managing my parents&apos; clinical checkups so
-              straightforward. Excellent interface and NHS partner integrations.&quot;
+            <p className="relative text-xs font-medium italic leading-relaxed text-slate-300">
+              <Quote className="pointer-events-none absolute -left-2 -top-3 h-8 w-8 text-white/5" />
+              &quot;NextDoorClinic makes booking health checkups so straightforward. Outstanding
+              interface and verified local pharmacies.&quot;
             </p>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Sarah Jenkins • Patient Portal User
+            <div className="text-[10px] font-bold uppercase tracking-widest text-[#10B981]">
+              Sarah Jenkins • Verified Patient Portal User
             </div>
           </div>
         </div>
       </div>
 
-      {/* ================= RIGHT SIDE: PATIENT FORM ================= */}
-      <div className="relative flex flex-col items-center justify-center overflow-hidden bg-white px-6 py-12 dark:bg-zinc-950 sm:px-12 lg:px-16">
-        <div className="pointer-events-none absolute right-[-10%] top-[-10%] h-[300px] w-[300px] rounded-full bg-brand-teal/5 blur-3xl lg:hidden" />
+      {/* ========================================================================= */}
+      {/* RIGHT SIDE: REGISTRATION FORM */}
+      {/* ========================================================================= */}
+      <div className="relative flex flex-col items-center justify-center overflow-y-auto bg-white px-6 py-12 dark:bg-zinc-950 sm:px-12 lg:px-16">
+        {/* Soft Background Accent */}
+        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-[#10B981]/10 blur-3xl lg:hidden" />
 
-        <div className="w-full max-w-lg space-y-8">
-          <div className="flex flex-col items-center space-y-4 lg:items-start lg:text-left">
-            <Link href="/" className="block">
-              <img
-                src="/assets/header-logo.png"
-                alt="NextDoorClinic Logo"
-                className="h-10 w-auto object-contain"
-              />
+        <div className="w-full max-w-lg space-y-6">
+          {/* Header */}
+          <div className="flex flex-col items-center space-y-3 text-center lg:items-start lg:text-left">
+            <Link href="/" className="flex items-center space-x-2 lg:hidden">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#10B981] text-xs font-black text-white shadow-md">
+                NC
+              </div>
+              <span className="text-base font-black text-slate-900 dark:text-white">
+                NextDoorClinic
+              </span>
             </Link>
 
-            <div className="space-y-1.5 text-center lg:text-left">
-              <h2 className="text-2xl font-black tracking-tight text-brand-navy dark:text-white sm:text-3xl">
-                Create patient account
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#10B981]">
+                Patient Registration
+              </span>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                Create your patient account
               </h2>
-              <p className="max-w-xs text-xs font-normal leading-relaxed text-slate-500 dark:text-zinc-400">
-                Join NextDoorClinic to coordinate vaccine bookings and clinical consultations.
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
+                Join NextDoorClinic to discover and book clinical healthcare services.
               </p>
             </div>
           </div>
 
+          {/* Success Banner */}
           {success ? (
-            <div className="dark:text-emerald-450 flex flex-col items-center space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-center text-emerald-600">
-              <CheckCircle2 className="size-10 animate-bounce text-emerald-500" />
-              <h3 className="text-lg font-bold">Registration Successful!</h3>
-              <p className="text-xs font-semibold leading-relaxed">
-                Your patient profile has been configured successfully. Redirecting you to login...
+            <div className="flex flex-col items-center space-y-3 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-8 text-center text-[#10B981] animate-in fade-in">
+              <CheckCircle2 className="h-12 w-12 animate-bounce text-[#10B981]" />
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                Registration Successful!
+              </h3>
+              <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                Your patient profile has been created successfully. Redirecting you to sign in...
               </p>
+              <Link
+                href="/login"
+                className="mt-2 rounded-xl bg-[#10B981] px-6 py-2.5 text-xs font-black text-white shadow-md hover:bg-emerald-600"
+              >
+                Go to Sign In Now
+              </Link>
             </div>
           ) : (
             <form className="space-y-4" onSubmit={handleSubmit}>
               {error && (
-                <div className="dark:text-rose-455 flex gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs font-semibold leading-relaxed text-rose-600">
-                  <AlertCircle className="size-4 shrink-0" />
+                <div className="flex items-start space-x-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-xs font-bold text-rose-600 animate-in fade-in dark:text-rose-400">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* First Name */}
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
+              {/* First & Last Name */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                     First Name
                   </label>
                   <div className="relative">
-                    <span className="text-slate-450 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                       <User className="h-4 w-4" />
                     </span>
                     <input
@@ -243,19 +282,18 @@ export default function RegisterPatientPage() {
                       required
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
-                      placeholder="Alistair"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                      placeholder="Archit"
                     />
                   </div>
                 </div>
 
-                {/* Last Name */}
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                     Last Name
                   </label>
                   <div className="relative">
-                    <span className="text-slate-455 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                       <User className="h-4 w-4" />
                     </span>
                     <input
@@ -263,20 +301,20 @@ export default function RegisterPatientPage() {
                       required
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
-                      placeholder="Pemberton"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                      placeholder="Karma"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Email Address */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                   Email Address
                 </label>
                 <div className="relative">
-                  <span className="text-slate-450 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                     <Mail className="h-4 w-4" />
                   </span>
                   <input
@@ -284,20 +322,20 @@ export default function RegisterPatientPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
-                    placeholder="alistair.pemberton@healthmail.co.uk"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                    placeholder="archit@example.co.uk"
                   />
                 </div>
               </div>
 
-              {/* Mobile Number & OTP Verification */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
-                  Mobile Number
+              {/* Mobile Number & Verification */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+                  UK Mobile Number
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <span className="text-slate-455 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                       <Phone className="h-4 w-4" />
                     </span>
                     <input
@@ -306,135 +344,154 @@ export default function RegisterPatientPage() {
                       disabled={otpVerified}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
                       placeholder="07700 900077"
                     />
                   </div>
+
                   {!otpVerified && (
                     <button
                       type="button"
                       disabled={sendingOtp || !phone}
                       onClick={handleSendOtp}
-                      className="h-10.5 shrink-0 rounded-xl bg-slate-900 px-4 text-[10px] font-extrabold uppercase tracking-wider text-white transition-colors hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                      className="shadow-xs h-11 shrink-0 rounded-2xl bg-slate-900 px-4 text-xs font-black text-white transition-all hover:bg-[#10B981] active:scale-95 disabled:opacity-50 dark:bg-zinc-800"
                     >
-                      {sendingOtp ? "Sending..." : otpSent ? "Resend" : "Verify Mobile"}
+                      {sendingOtp ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : otpSent ? (
+                        "Resend OTP"
+                      ) : (
+                        "Send OTP"
+                      )}
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* OTP Code entry mock */}
+              {/* OTP Entry Simulation */}
               {otpSent && !otpVerified && (
-                <div className="space-y-3 rounded-2xl border border-emerald-500/10 bg-emerald-500/5 p-4">
-                  <div className="dark:text-emerald-450 flex select-none items-center space-x-2 text-[10px] font-extrabold text-emerald-600">
-                    <Phone className="size-3.5 animate-pulse" />
+                <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-50/50 p-4 animate-in fade-in dark:border-emerald-900/60 dark:bg-emerald-950/40">
+                  <div className="flex items-center space-x-2 text-xs font-bold text-[#10B981]">
+                    <Phone className="h-4 w-4 animate-pulse" />
                     <span>
-                      [SMS GATEWAY MOCK]: verification code is:{" "}
-                      <code className="rounded border bg-white px-1.5 py-0.5 font-mono font-black text-emerald-700 dark:bg-zinc-800 dark:text-emerald-400">
+                      Verification code:{" "}
+                      <code className="rounded-lg border border-emerald-300 bg-white px-2 py-0.5 font-mono text-xs font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-300">
                         {generatedOtp}
                       </code>
                     </span>
                   </div>
+
                   <div className="flex gap-2">
                     <input
                       type="text"
                       maxLength={4}
                       value={userOtp}
                       onChange={(e) => setUserOtp(e.target.value.replace(/\D/g, ""))}
-                      className="w-24 rounded-xl border border-slate-200 bg-white p-2 text-center font-mono text-xs font-black outline-none focus:border-brand-teal focus:ring-brand-teal"
+                      className="w-28 rounded-xl border border-slate-200 bg-white p-2 text-center font-mono text-sm font-black outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
                       placeholder="••••"
                     />
                     <button
                       type="button"
                       onClick={handleVerifyOtp}
-                      className="hover:bg-emerald-505 h-9 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white transition-colors"
+                      className="shadow-xs rounded-xl bg-[#10B981] px-4 py-2 text-xs font-black text-white hover:bg-emerald-600 active:scale-95"
                     >
-                      Confirm Code
+                      Verify Code
                     </button>
                   </div>
                   {otpError && (
-                    <span className="block text-[10px] font-semibold text-rose-500">
-                      Incorrect verification code.
+                    <span className="block text-xs font-bold text-rose-600">
+                      Incorrect verification code. Please check above code.
                     </span>
                   )}
                 </div>
               )}
 
               {otpVerified && (
-                <div className="dark:text-emerald-450 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2.5 text-xs font-bold text-emerald-600">
-                  <Check className="size-4 shrink-0" />
+                <div className="flex items-center space-x-2 rounded-xl border border-emerald-500/20 bg-emerald-50/50 p-3 text-xs font-bold text-[#10B981] dark:border-emerald-900/60 dark:bg-emerald-950/40">
+                  <Check className="h-4 w-4 shrink-0" />
                   <span>Mobile number verified successfully</span>
                 </div>
               )}
 
-              {/* Passwords */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
+              {/* Password & Confirm Password */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                     Password
                   </label>
                   <div className="relative">
-                    <span className="text-slate-450 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                       <Lock className="h-4 w-4" />
                     </span>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 pr-9 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
                       placeholder="••••••••"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                     Confirm Password
                   </label>
                   <div className="relative">
-                    <span className="text-slate-450 absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                       <Lock className="h-4 w-4" />
                     </span>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
                       placeholder="••••••••"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Accept Policies Checkboxes */}
-              <div className="select-none space-y-2 pt-2">
-                <label className="flex cursor-pointer items-start gap-2.5">
+              {/* Policy Checkboxes */}
+              <div className="space-y-2 pt-1">
+                <label className="flex cursor-pointer items-start space-x-2.5">
                   <input
                     type="checkbox"
                     checked={acceptTerms}
                     onChange={(e) => setAcceptTerms(e.target.checked)}
-                    className="border-slate-350 mt-0.5 size-4 shrink-0 rounded text-brand-teal focus:ring-brand-teal dark:border-zinc-700"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#10B981] focus:ring-[#10B981]"
                   />
-                  <span className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-zinc-400">
+                  <span className="text-xs font-medium text-slate-600 dark:text-zinc-400">
                     I accept the{" "}
-                    <Link href="/terms" className="text-brand-teal hover:underline">
-                      Terms and Conditions
+                    <Link href="/terms" className="font-bold text-[#10B981] hover:underline">
+                      Terms & Conditions
                     </Link>
                   </span>
                 </label>
 
-                <label className="flex cursor-pointer items-start gap-2.5">
+                <label className="flex cursor-pointer items-start space-x-2.5">
                   <input
                     type="checkbox"
                     checked={acceptPrivacy}
                     onChange={(e) => setAcceptPrivacy(e.target.checked)}
-                    className="border-slate-350 mt-0.5 size-4 shrink-0 rounded text-brand-teal focus:ring-brand-teal dark:border-zinc-700"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#10B981] focus:ring-[#10B981]"
                   />
-                  <span className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-zinc-400">
+                  <span className="text-xs font-medium text-slate-600 dark:text-zinc-400">
                     I accept the{" "}
-                    <Link href="/privacy" className="text-brand-teal hover:underline">
+                    <Link href="/privacy" className="font-bold text-[#10B981] hover:underline">
                       Privacy Policy
                     </Link>
                   </span>
@@ -442,35 +499,39 @@ export default function RegisterPatientPage() {
               </div>
 
               {/* Submit Button */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="shadow-emerald-605/10 flex w-full select-none justify-center rounded-xl border border-transparent bg-emerald-600 px-4 py-3.5 text-xs font-bold text-white shadow-md transition-all hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 active:scale-[0.99] disabled:opacity-50"
-                >
-                  {isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-white" />
-                  ) : (
-                    "Register Account"
-                  )}
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="flex w-full items-center justify-center space-x-2 rounded-2xl bg-[#10B981] px-4 py-3.5 text-xs font-black text-white shadow-md transition-all hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:ring-offset-2 active:scale-95 disabled:opacity-50"
+              >
+                {isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                ) : (
+                  <>
+                    <span>Register Patient Account</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
             </form>
           )}
 
           {/* Footer Link */}
-          <div className="space-y-3.5 border-t border-slate-100 pt-6 text-center dark:border-zinc-800/60 lg:text-left">
-            <p className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400">
+          <div className="dark:border-zinc-850 space-y-3 border-t border-slate-100 pt-5 text-center lg:text-left">
+            <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
               Already have an account?{" "}
-              <Link href="/login" className="font-bold text-brand-teal hover:underline">
+              <Link href="/login" className="font-extrabold text-[#10B981] hover:underline">
                 Sign In
               </Link>
             </p>
-            <div className="inline-flex select-none items-center space-x-1.5 rounded-lg border border-slate-200/50 bg-slate-50 px-3 py-1.5 dark:border-zinc-800/80 dark:bg-zinc-900/40">
-              <ShieldCheck className="h-4 w-4 shrink-0 text-brand-teal" />
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                NHS Verified Partner System
-              </span>
+
+            <div className="flex justify-center pt-1 lg:justify-start">
+              <div className="inline-flex select-none items-center space-x-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                <ShieldCheck className="h-4 w-4 text-[#10B981]" />
+                <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
+                  NHS Verified Healthcare Partner
+                </span>
+              </div>
             </div>
           </div>
         </div>

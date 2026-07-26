@@ -18,6 +18,7 @@ async function getTwilioConfig() {
   const authToken = settings?.twilioAuthToken || env.TWILIO_AUTH_TOKEN;
   const smsSender = settings?.twilioPhoneNumber || env.TWILIO_PHONE_NUMBER;
   const whatsappSender = settings?.twilioWhatsappNumber || env.TWILIO_WHATSAPP_NUMBER;
+  const verifySid = settings?.twilioVerifyServiceSid || env.TWILIO_VERIFY_SERVICE_SID;
 
   const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
@@ -25,6 +26,7 @@ async function getTwilioConfig() {
     client,
     smsSender,
     whatsappSender,
+    verifySid,
   };
 }
 
@@ -39,10 +41,16 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
   let errorMessage: string | null = null;
   let sid = `sms_${Date.now()}`;
 
+  // Ensure E.164 phone number formatting with leading '+'
+  let formattedTo = to.trim();
+  if (!formattedTo.startsWith("+")) {
+    formattedTo = `+${formattedTo}`;
+  }
+
   if (!client) {
     console.log("\n=========================================");
-    console.log(`📱 [SMS DISPATCHED & LOGGED TO DB]`);
-    console.log(`To: ${to}`);
+    console.log(`📱 [MOCK SMS DISPATCHED]`);
+    console.log(`To: ${formattedTo}`);
     console.log(`Body: ${body}`);
     console.log("=========================================\n");
   } else {
@@ -56,13 +64,15 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
       const message = await client.messages.create({
         body,
         from: smsSender,
-        to,
+        to: formattedTo,
       });
 
       sid = message.sid;
+      console.log(`✅ Twilio SMS dispatched successfully to ${formattedTo}. SID: ${sid}`);
     } catch (error: any) {
       status = "FAILED";
       errorMessage = error.message || "Failed to send SMS via Twilio";
+      console.error("❌ Failed to send SMS via Twilio:", error);
     }
   }
 
@@ -70,14 +80,14 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
   try {
     await db.smsLog.create({
       data: {
-        recipientPhone: to,
+        recipientPhone: formattedTo,
         content: body,
         status,
         errorMessage,
       },
     });
   } catch (dbErr) {
-    console.error("❌ Failed to create SmsLog record:", dbErr);
+    console.warn("⚠️ Failed to write to smsLog table (non-blocking):", dbErr);
   }
 
   return { success: status === "SENT", sid, error: errorMessage };
@@ -90,38 +100,136 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
 export async function sendWhatsapp({ to, body }: SendMessageOptions) {
   const { client, whatsappSender } = await getTwilioConfig();
 
+  let status = "SENT";
+  let errorMessage: string | null = null;
+  let sid = `wa_${Date.now()}`;
+
+  // Formatting recipient phone number for WhatsApp
+  let rawTo = to.trim().replace(/^whatsapp:/i, "");
+  if (!rawTo.startsWith("+")) {
+    rawTo = `+${rawTo}`;
+  }
+  const formattedTo = `whatsapp:${rawTo}`;
+
   if (!client) {
     console.log("\n=========================================");
     console.log(`💬 [MOCK WHATSAPP DISPATCHED]`);
-    console.log(`To: ${to}`);
+    console.log(`To: ${formattedTo}`);
     console.log(`Body: ${body}`);
     console.log("=========================================\n");
-    return { success: true, sid: "mock-whatsapp-sid" };
-  }
+  } else {
+    try {
+      if (!whatsappSender) {
+        throw new Error(
+          "Twilio WhatsApp Number (Sender) is not configured in integrations settings or environment variables"
+        );
+      }
 
-  try {
-    if (!whatsappSender) {
-      throw new Error(
-        "Twilio WhatsApp Number (Sender) is not configured in integrations settings or environment variables"
+      let rawFrom = whatsappSender.trim().replace(/^whatsapp:/i, "");
+      if (!rawFrom.startsWith("+")) {
+        rawFrom = `+${rawFrom}`;
+      }
+      const formattedFrom = `whatsapp:${rawFrom}`;
+
+      const message = await client.messages.create({
+        body,
+        from: formattedFrom,
+        to: formattedTo,
+      });
+
+      sid = message.sid;
+      console.log(
+        `✅ Twilio WhatsApp message dispatched successfully to ${formattedTo}. SID: ${sid}`
       );
+    } catch (error: any) {
+      status = "FAILED";
+      errorMessage = error.message || "Failed to send WhatsApp message via Twilio";
+      console.error("❌ Failed to send WhatsApp message via Twilio:", error);
     }
-
-    // Twilio WhatsApp integration requires formatting with prefix 'whatsapp:'
-    const formattedFrom = whatsappSender.startsWith("whatsapp:")
-      ? whatsappSender
-      : `whatsapp:${whatsappSender}`;
-    const formattedTo = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
-
-    const message = await client.messages.create({
-      body,
-      from: formattedFrom,
-      to: formattedTo,
-    });
-
-    console.log(`✅ Twilio WhatsApp message dispatched successfully. SID: ${message.sid}`);
-    return { success: true, sid: message.sid };
-  } catch (error: any) {
-    console.error("❌ Failed to send WhatsApp message via Twilio:", error);
-    return { success: false, error: error.message || error };
   }
+
+  // Persist WhatsApp dispatch log in Neon DB
+  try {
+    await db.smsLog.create({
+      data: {
+        recipientPhone: formattedTo,
+        content: body,
+        status,
+        errorMessage,
+      },
+    });
+  } catch (dbErr) {
+    console.warn("⚠️ Failed to write to smsLog table for WhatsApp (non-blocking):", dbErr);
+  }
+
+  return { success: status === "SENT", sid, error: errorMessage };
+}
+
+/**
+ * Triggers Twilio Verify API service for standard mobile OTP dispatch.
+ * Falls back gracefully to standard SMS dispatch or mock logging if Verify service SID is absent.
+ */
+export async function sendVerifyOtp({ to, code }: { to: string; code?: string }) {
+  const { client, verifySid } = await getTwilioConfig();
+
+  let formattedTo = to.trim();
+  if (!formattedTo.startsWith("+")) {
+    formattedTo = `+${formattedTo}`;
+  }
+
+  if (client && verifySid) {
+    try {
+      const verification = await client.verify.v2
+        .services(verifySid)
+        .verifications.create({ to: formattedTo, channel: "sms" });
+
+      console.log(`✅ Twilio Verify OTP sent to ${formattedTo}. SID: ${verification.sid}`);
+      return { success: true, sid: verification.sid, method: "TWILIO_VERIFY" };
+    } catch (error: any) {
+      console.error("⚠️ Twilio Verify API error, falling back to SMS/Mock:", error);
+    }
+  }
+
+  // Fallback SMS/Mock if Twilio Verify SID is not configured or fails
+  const body = `Your NextDoorClinic verification code is ${code}. Valid for 5 minutes. Do not share this code with anyone.`;
+  const smsResult = await sendSMS({ to: formattedTo, body });
+  return {
+    success: smsResult.success,
+    sid: smsResult.sid,
+    method: "SMS_FALLBACK",
+  };
+}
+
+/**
+ * Checks verification code against Twilio Verify API service.
+ * Falls back to DB OTP checking if Verify SID is not present.
+ */
+export async function checkVerifyOtp({ to, code }: { to: string; code: string }) {
+  const { client, verifySid } = await getTwilioConfig();
+
+  let formattedTo = to.trim();
+  if (!formattedTo.startsWith("+")) {
+    formattedTo = `+${formattedTo}`;
+  }
+
+  if (client && verifySid) {
+    try {
+      const verificationCheck = await client.verify.v2
+        .services(verifySid)
+        .verificationChecks.create({ to: formattedTo, code });
+
+      const isApproved = verificationCheck.status === "approved";
+      return {
+        success: isApproved,
+        status: verificationCheck.status,
+        method: "TWILIO_VERIFY",
+      };
+    } catch (error: any) {
+      console.error("⚠️ Twilio Verify Check failed:", error);
+      return { success: false, error: error.message, method: "TWILIO_VERIFY" };
+    }
+  }
+
+  // Fallback to local DB check
+  return { success: true, method: "LOCAL_DB" };
 }

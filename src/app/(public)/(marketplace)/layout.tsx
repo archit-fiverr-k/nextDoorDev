@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { MobileHeaderMenu } from "@/components/mobile-header-menu";
 
 const pharmacyFirstConditions = [
   { id: "pf-1", label: "Earache", desc: "Aged 1 to 17 years", color: "sky" },
@@ -78,6 +79,29 @@ export default async function MarketplaceLayout({ children }: { children: React.
   } else if (user?.pharmacyId) {
     dashboardHref = `/pharmacy/${user.pharmacyId}`;
   }
+
+  // Fetch pharmacy details if user is a pharmacy owner / staff
+  let pharmacyName = "";
+  const isPharmacyUser = user?.role === "pharmacy" || user?.role === "staff" || !!user?.pharmacyId;
+
+  if (isPharmacyUser && user?.pharmacyId) {
+    try {
+      const pharm = await db.pharmacy.findUnique({
+        where: { id: user.pharmacyId },
+        select: { name: true },
+      });
+      if (pharm?.name) {
+        pharmacyName = pharm.name;
+      }
+    } catch (err) {
+      console.error("Error fetching pharmacy in layout:", err);
+    }
+  }
+
+  if (isPharmacyUser && !pharmacyName) {
+    pharmacyName = user?.name || "My Pharmacy Clinic";
+  }
+
   return (
     <div className="text-brand-dark flex min-h-screen flex-col overflow-x-hidden bg-brand-bg font-sans antialiased">
       {/* 1. TOP BAR: Informational links & Social links (Hidden on mobile) */}
@@ -122,16 +146,26 @@ export default async function MarketplaceLayout({ children }: { children: React.
 
       {/* 2. SPLIT LAYOUT PREMIUM HEADER */}
       <header className="sticky top-0 z-50 w-full select-none shadow-sm">
-        {/* TOP ROW: Brand logo, informational links, glowing pill badges, and patient auth actions */}
-        <div className="flex h-16 items-center justify-between border-b border-slate-100 bg-white/95 px-6 backdrop-blur-md dark:border-zinc-900/60 dark:bg-zinc-950/95 lg:px-8">
-          {/* Left: Brand logo */}
-          <Link href="/" className="group flex shrink-0 items-center">
-            <img
-              src="/assets/header-logo.png"
-              alt="NextDoorClinic Logo"
-              className="h-10 w-auto object-contain transition-transform group-hover:scale-[1.02] dark:brightness-0 dark:invert"
+        {/* TOP ROW: Brand logo, mobile menu on top left, informational links, and patient auth actions */}
+        <div className="flex h-16 items-center justify-between border-b border-slate-100 bg-white/95 px-4 backdrop-blur-md dark:border-zinc-900/60 dark:bg-zinc-950/95 sm:px-6 lg:px-8">
+          {/* Left: Mobile Menu (Top Left) + Brand logo */}
+          <div className="flex items-center space-x-3">
+            {/* 3-Dot Mobile Menu on Top Left */}
+            <MobileHeaderMenu
+              user={user}
+              pharmacyName={pharmacyName}
+              dashboardHref={dashboardHref}
+              isPharmacyUser={isPharmacyUser}
             />
-          </Link>
+
+            <Link href="/" className="group flex shrink-0 items-center">
+              <img
+                src="/assets/header-logo.png"
+                alt="NextDoorClinic Logo"
+                className="h-8 w-auto object-contain transition-transform group-hover:scale-[1.02] dark:brightness-0 dark:invert sm:h-10"
+              />
+            </Link>
+          </div>
 
           {/* Middle: Informational Links */}
           <div className="hidden items-center space-x-6 lg:flex">
@@ -150,7 +184,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
           </div>
 
           {/* Right: Patient Login, Sign Up, or Dashboard avatar */}
-          <div className="flex shrink-0 items-center space-x-4">
+          <div className="flex shrink-0 items-center space-x-3 sm:space-x-4">
             {user ? (
               <Link
                 href={dashboardHref}
@@ -159,20 +193,22 @@ export default async function MarketplaceLayout({ children }: { children: React.
                 <span>
                   {user.role === "super_admin" || user.role === "platform_admin"
                     ? "Admin Panel"
-                    : "My Dashboard"}
+                    : isPharmacyUser
+                      ? "Pharmacy Dashboard"
+                      : "My Dashboard"}
                 </span>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-teal/20 bg-brand-teal/10 text-xs font-bold text-brand-teal dark:bg-zinc-900 dark:text-brand-teal">
                   {user.role === "super_admin" || user.role === "platform_admin" ? "AD" : initials}
                 </div>
               </Link>
             ) : (
-              <div className="flex items-center space-x-4">
+              <div className="hidden items-center space-x-2.5 sm:flex sm:space-x-4">
                 <Link
                   href="/login"
-                  className="flex h-9 items-center space-x-1.5 rounded-full border border-slate-200/80 bg-white px-4 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 active:scale-[0.98] dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                  className="flex h-9 items-center space-x-1.5 rounded-full border border-slate-200/80 bg-white px-3.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 active:scale-[0.98] dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900 sm:px-4"
                 >
                   <User className="h-3.5 w-3.5 text-brand-teal" />
-                  <span>Patient Login</span>
+                  <span>Login</span>
                 </Link>
                 <Link
                   href="/register"
@@ -183,13 +219,23 @@ export default async function MarketplaceLayout({ children }: { children: React.
               </div>
             )}
 
-            {/* List your clinic button (light background / blue-gray button) */}
-            <Link
-              href="/for-providers"
-              className="hidden h-9 items-center justify-center rounded-full bg-brand-navy px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-brand-teal active:scale-[0.98] sm:flex"
-            >
-              List Your Clinic
-            </Link>
+            {/* List your clinic button OR Pharmacy Name button (Hidden on Mobile) */}
+            {isPharmacyUser ? (
+              <Link
+                href={dashboardHref}
+                className="hidden h-9 items-center justify-center space-x-1.5 rounded-full bg-brand-navy px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-brand-teal active:scale-[0.98] lg:flex"
+              >
+                <Store className="h-3.5 w-3.5 text-brand-teal" />
+                <span className="max-w-[180px] truncate">{pharmacyName}</span>
+              </Link>
+            ) : (
+              <Link
+                href="/register-clinic"
+                className="hidden h-9 items-center justify-center rounded-full bg-brand-navy px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-brand-teal active:scale-[0.98] lg:flex"
+              >
+                List Your Clinic
+              </Link>
+            )}
           </div>
         </div>
 
@@ -405,17 +451,6 @@ export default async function MarketplaceLayout({ children }: { children: React.
             >
               A-Z Treatments
             </Link>
-
-            {/* Glowing Search Box on bottom right - sized h-8 to fit perfectly in h-11 bar */}
-            <div className="ml-auto flex items-center pr-2">
-              <Link
-                href="/providers"
-                className="flex h-8 shrink-0 select-none items-center space-x-1.5 rounded-full border border-amber-500/35 bg-amber-500/10 px-4 text-xs font-semibold text-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.15)] transition-all duration-200 hover:bg-amber-500/20 hover:shadow-[0_0_14px_rgba(245,158,11,0.3)] dark:text-amber-400"
-              >
-                <Search className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Search Clinics</span>
-              </Link>
-            </div>
           </div>
         </div>
       </header>
@@ -585,7 +620,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
               <ul className="text-brand-muted space-y-3 text-xs font-medium">
                 <li>
                   <Link
-                    href="/for-providers"
+                    href="/register-clinic"
                     className="group flex items-center transition-all duration-200 hover:text-brand-teal"
                   >
                     <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-teal opacity-0 transition-opacity group-hover:opacity-100" />
@@ -594,7 +629,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
                 </li>
                 <li>
                   <Link
-                    href="/for-providers"
+                    href="/register-clinic"
                     className="group flex items-center transition-all duration-200 hover:text-brand-teal"
                   >
                     <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-teal opacity-0 transition-opacity group-hover:opacity-100" />
@@ -603,7 +638,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
                 </li>
                 <li>
                   <Link
-                    href="/for-providers"
+                    href="/register-clinic"
                     className="group flex items-center transition-all duration-200 hover:text-brand-teal"
                   >
                     <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-teal opacity-0 transition-opacity group-hover:opacity-100" />
@@ -612,7 +647,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
                 </li>
                 <li>
                   <Link
-                    href="/for-providers"
+                    href="/register-clinic"
                     className="group flex items-center transition-all duration-200 hover:text-brand-teal"
                   >
                     <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-teal opacity-0 transition-opacity group-hover:opacity-100" />
@@ -621,7 +656,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
                 </li>
                 <li>
                   <Link
-                    href="/for-providers"
+                    href="/register-clinic"
                     className="group flex items-center transition-all duration-200 hover:text-brand-teal"
                   >
                     <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-teal opacity-0 transition-opacity group-hover:opacity-100" />

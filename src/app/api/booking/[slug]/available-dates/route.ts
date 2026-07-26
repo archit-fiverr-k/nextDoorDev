@@ -59,8 +59,8 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
     const now = new Date();
     const availableDates: string[] = [];
 
-    // 4. Check each of the next 60 days
-    for (let i = 1; i <= DAY_COUNT; i++) {
+    // 4. Check each of the next 60 days starting from today (i = 0)
+    for (let i = 0; i <= DAY_COUNT; i++) {
       const date = addDays(today, i);
       const dateStr = format(date, "yyyy-MM-dd");
 
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
       if (blockedSet.has(dateStr)) continue;
 
       // Check if pharmacy is open this day of week
-      const dayOfWeek = new Date(`${dateStr}T12:00:00`).getDay(); // 0=Sun…6=Sat
+      const dayOfWeek = date.getDay(); // 0=Sun…6=Sat
       const avail = availabilityByDay.get(dayOfWeek);
       if (!avail) continue;
 
@@ -114,7 +114,10 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
       }
     }
 
-    return NextResponse.json({ dates: availableDates });
+    return NextResponse.json({
+      dates: availableDates,
+      availableDates: availableDates,
+    });
   } catch (error: any) {
     console.error("❌ Error in available-dates API route:", error);
     return NextResponse.json(

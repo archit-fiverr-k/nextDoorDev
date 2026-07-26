@@ -304,3 +304,38 @@ export async function getProviderBySlugAction(slug: string) {
     return { success: false, error: error.message || "Failed to load provider details" };
   }
 }
+
+/**
+ * Delete patient account (soft delete / deactivate).
+ */
+export async function deletePatientAccountAction() {
+  const session = await assertRole(["patient"]);
+  const customer = await getPatientCustomer(session.user.id, session.user.email);
+
+  try {
+    if (customer) {
+      await db.customer.update({
+        where: { id: customer.id },
+        data: {
+          isActive: false,
+          deletedAt: new Date(),
+        },
+      });
+    }
+
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: "DELETE",
+        entityName: "PatientAccount",
+        entityId: customer?.id || session.user.id,
+      },
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("❌ deletePatientAccountAction error:", error);
+    return { success: false, error: error.message || "Failed to delete account" };
+  }
+}

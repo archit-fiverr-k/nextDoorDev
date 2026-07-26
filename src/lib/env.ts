@@ -20,6 +20,7 @@ const envSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
   TWILIO_WHATSAPP_NUMBER: z.string().optional(),
+  TWILIO_VERIFY_SERVICE_SID: z.string().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);

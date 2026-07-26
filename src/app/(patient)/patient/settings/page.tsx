@@ -1,22 +1,17 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import React, { useState, useTransition } from "react";
 import {
   Lock,
-  Mail,
-  MessageSquare,
-  Phone,
   Loader2,
   CheckCircle2,
   AlertCircle,
   Shield,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
-import {
-  updatePatientPasswordAction,
-  updatePatientNotificationPrefsAction,
-  getPatientProfileAction,
-} from "@/actions/patient";
+import { updatePatientPasswordAction, deletePatientAccountAction } from "@/actions/patient";
+import { logoutAction } from "@/actions/auth";
 
 export default function PatientSettingsPage() {
   const [passwordForm, setPasswordForm] = useState({
@@ -28,29 +23,9 @@ export default function PatientSettingsPage() {
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
 
-  const [prefs, setPrefs] = useState({
-    emailNotifications: true,
-    smsNotifications: false,
-    whatsappNotifications: false,
-  });
-  const [prefsPending, startPrefsTransition] = useTransition();
-  const [prefsSuccess, setPrefsSuccess] = useState(false);
-  const [prefsError, setPrefsError] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getPatientProfileAction().then((res) => {
-      if (res.success && res.data) {
-        setPrefs({
-          emailNotifications: res.data.emailNotifications,
-          smsNotifications: res.data.smsNotifications,
-          whatsappNotifications: res.data.whatsappNotifications,
-        });
-      }
-      setLoading(false);
-    });
-  }, []);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePending, startDeleteTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +34,11 @@ export default function PatientSettingsPage() {
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       setPwError("New passwords do not match.");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      setPwError("New password must be at least 8 characters long.");
       return;
     }
 
@@ -74,82 +54,45 @@ export default function PatientSettingsPage() {
     });
   };
 
-  const handlePrefsChange = (field: keyof typeof prefs, val: boolean) => {
-    const updated = { ...prefs, [field]: val };
-    setPrefs(updated);
-    setPrefsError(null);
-    setPrefsSuccess(false);
-
-    startPrefsTransition(async () => {
-      const res = await updatePatientNotificationPrefsAction(updated);
-      if (!res.success) {
-        setPrefsError(res.error || "Failed to save preferences.");
+  const handleDeleteAccount = () => {
+    setDeleteError(null);
+    startDeleteTransition(async () => {
+      const res = await deletePatientAccountAction();
+      if (res.success) {
+        await logoutAction();
       } else {
-        setPrefsSuccess(true);
-        setTimeout(() => setPrefsSuccess(false), 3000);
+        setDeleteError(res.error || "Failed to delete account. Please try again.");
       }
     });
   };
 
   const inputCls =
-    "w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all";
-
-  const Toggle = ({
-    label,
-    desc,
-    icon: Icon,
-    field,
-  }: {
-    label: string;
-    desc: string;
-    icon: React.ElementType;
-    field: keyof typeof prefs;
-  }) => (
-    <div className="flex items-center justify-between border-b border-slate-50 py-3 last:border-0">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
-          <Icon className="h-4 w-4 text-slate-500" />
-        </div>
-        <div>
-          <p className="text-xs font-bold text-slate-700">{label}</p>
-          <p className="text-[10px] font-medium text-slate-400">{desc}</p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={() => handlePrefsChange(field, !prefs[field])}
-        disabled={prefsPending}
-        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${prefs[field] ? "bg-emerald-600" : "bg-slate-200"}`}
-      >
-        <span
-          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${prefs[field] ? "translate-x-4" : "translate-x-0.5"}`}
-        />
-      </button>
-    </div>
-  );
-
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-      </div>
-    );
-  }
+    "w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100";
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {/* Page Header */}
       <div>
-        <h1 className="text-xl font-black text-slate-800">Settings</h1>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Manage your security and notification preferences.
+        <h1 className="text-2xl font-black text-slate-900 dark:text-white">Account Settings</h1>
+        <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-zinc-400">
+          Manage your account security and authentication options.
         </p>
       </div>
 
-      {/* Change Password */}
-      <div className="space-y-5 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-          <Shield className="h-4 w-4 text-emerald-600" />
-          <h2 className="text-sm font-black text-slate-700">Security</h2>
+      {/* 1. CHANGE PASSWORD CARD */}
+      <div className="shadow-xs dark:border-zinc-850 space-y-5 rounded-3xl border border-slate-200/90 bg-white p-6 dark:bg-zinc-900 sm:p-8">
+        <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4 dark:border-zinc-800">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 font-bold text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+            <Shield className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+              Change Password
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Update your account login password.
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handlePasswordChange} className="space-y-4">
@@ -167,12 +110,12 @@ export default function PatientSettingsPage() {
             {
               label: "Confirm New Password",
               field: "confirmPassword" as const,
-              placeholder: "Repeat new password",
+              placeholder: "Re-enter new password",
             },
           ].map(({ label, field, placeholder }) => (
             <div key={field}>
-              <label className="mb-1.5 block flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
-                <Lock className="h-3 w-3" /> {label}
+              <label className="mb-1.5 block flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-zinc-300">
+                <Lock className="h-3.5 w-3.5 text-slate-400" /> {label}
               </label>
               <input
                 type="password"
@@ -186,84 +129,108 @@ export default function PatientSettingsPage() {
           ))}
 
           {pwError && (
-            <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700">
+            <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300">
               <AlertCircle className="h-4 w-4 shrink-0" /> {pwError}
             </div>
           )}
           {pwSuccess && (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-700">
-              <CheckCircle2 className="h-4 w-4 shrink-0" /> Password changed successfully.
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" /> Password updated successfully.
             </div>
           )}
 
           <button
             type="submit"
             disabled={pwPending}
-            className="flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-slate-900 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3 text-xs font-black text-white transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50"
           >
-            {pwPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {pwPending ? "Changing..." : "Change Password"}
+            {pwPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {pwPending ? "Updating Password..." : "Change Password"}
           </button>
         </form>
       </div>
 
-      {/* Notification Preferences */}
-      <div className="space-y-1 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div className="mb-2 flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Mail className="h-4 w-4 text-emerald-600" />
-            <h2 className="text-sm font-black text-slate-700">Notification Preferences</h2>
+      {/* 2. DANGER ZONE - DELETE ACCOUNT CARD */}
+      <div className="shadow-xs space-y-4 rounded-3xl border border-rose-200 bg-rose-50/40 p-6 dark:border-rose-900/40 dark:bg-rose-950/10 sm:p-8">
+        <div className="flex items-center gap-2.5 border-b border-rose-200/60 pb-4 dark:border-rose-900/40">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100 font-bold text-rose-600 dark:bg-rose-950 dark:text-rose-400">
+            <Trash2 className="h-5 w-5" />
           </div>
-          {prefsSuccess && <span className="text-[10px] font-bold text-emerald-600">Saved ✓</span>}
-          {prefsError && <span className="text-[10px] font-bold text-rose-600">{prefsError}</span>}
+          <div>
+            <h2 className="text-base font-extrabold text-rose-900 dark:text-rose-300">
+              Delete Account
+            </h2>
+            <p className="text-xs text-rose-700/80 dark:text-rose-400">
+              Permanently remove your account and data.
+            </p>
+          </div>
         </div>
-        <Toggle
-          label="Email Notifications"
-          desc="Booking confirmations and reminders via email"
-          icon={Mail}
-          field="emailNotifications"
-        />
-        <Toggle
-          label="SMS Notifications"
-          desc="Text message alerts for upcoming appointments"
-          icon={Phone}
-          field="smsNotifications"
-        />
-        <Toggle
-          label="WhatsApp Notifications"
-          desc="WhatsApp messages for bookings and updates"
-          icon={MessageSquare}
-          field="whatsappNotifications"
-        />
+
+        <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
+          Deleting your account will remove your access to the patient portal. Your past
+          appointments and medical history will be anonymized in accordance with UK healthcare
+          regulations.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => setShowDeleteModal(true)}
+          className="rounded-2xl bg-rose-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-rose-500 active:scale-95"
+        >
+          Delete My Account
+        </button>
       </div>
 
-      {/* Privacy / Delete Account Placeholder */}
-      <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-          <Trash2 className="h-4 w-4 text-rose-500" />
-          <h2 className="text-sm font-black text-slate-700">Privacy & Account</h2>
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-rose-500/10 p-3 text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                  Confirm Account Deletion
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+                {deleteError}
+              </p>
+            )}
+
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-300">
+              Are you sure you want to delete your account? You will be immediately logged out.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletePending}
+                className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletePending}
+                className="flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition hover:bg-rose-500"
+              >
+                {deletePending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {deletePending ? "Deleting..." : "Permanently Delete"}
+              </button>
+            </div>
+          </div>
         </div>
-        <p className="text-xs font-medium leading-relaxed text-slate-500">
-          You can request deletion of your account and all associated data. This action is permanent
-          and irreversible. Please contact our support team at{" "}
-          <a
-            href="mailto:support@nextdoorclinic.com"
-            className="font-semibold text-emerald-600 hover:underline"
-          >
-            support@nextdoorclinic.com
-          </a>{" "}
-          to submit a deletion request.
-        </p>
-        <button
-          disabled
-          className="cursor-not-allowed rounded-xl border border-rose-200 px-4 py-2 text-xs font-bold text-rose-500 opacity-50"
-        >
-          Request Account Deletion
-        </button>
-        <p className="text-[9px] font-medium text-slate-400">
-          Account deletion requests are processed within 30 days in accordance with UK GDPR.
-        </p>
-      </div>
+      )}
     </div>
   );
 }

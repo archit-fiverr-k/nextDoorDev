@@ -130,13 +130,13 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
       const avail = p.availability.find((a: any) => a.dayOfWeek === dayOfWeek);
       const isOpenToday = !isBlocked && !!avail;
 
-      // Check subscription
+      // Check subscription (allow all approved pharmacies by default)
       const hasActiveSub =
         p.subscription?.status === "ACTIVE" || p.subscription?.status === "TRIAL";
       const subNotExpired = p.subscription?.endDate
         ? new Date(p.subscription.endDate) > today
         : true;
-      const isSubscribed = hasActiveSub && subNotExpired;
+      const isSubscribed = p.subscription ? hasActiveSub && subNotExpired : true;
 
       // Calculate slots count today and find earliest available appointment today
       let slotsToday = 0;
@@ -223,13 +223,13 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
   const serviceNames = allServicesList.map((s) => s.name);
 
   return (
-    <div className="min-h-screen w-full bg-slate-50/50 py-10 dark:bg-zinc-950/40">
-      <div className="mx-auto max-w-7xl space-y-8 px-6 lg:px-8">
+    <div className="min-h-screen w-full bg-slate-50/50 py-4 dark:bg-zinc-950/40 sm:py-10">
+      <div className="mx-auto max-w-7xl space-y-4 px-3 sm:space-y-8 sm:px-6 lg:px-8">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+          <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
             Healthcare Directory
           </h2>
-          <p className="mt-1 text-slate-500 dark:text-zinc-400">
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400 sm:text-sm">
             Search and book private clinical services in your local area.
           </p>
         </div>

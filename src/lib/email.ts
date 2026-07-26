@@ -10,6 +10,8 @@ import { BookingNotificationEmail } from "@/components/emails/booking-notificati
 import { CredentialsEmail } from "@/components/emails/credentials-email";
 import { PasswordResetEmail } from "@/components/emails/password-reset";
 
+import { getRenderedTemplate } from "@/lib/email-templates";
+
 const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 export async function sendEmail({
@@ -34,7 +36,7 @@ export async function sendEmail({
   } else {
     try {
       const { data, error } = await resend.emails.send({
-        from: "NextDoorClinic <noreply@nextdoorclinic.com>",
+        from: process.env.RESEND_FROM_EMAIL || "NextDoorClinic <onboarding@resend.dev>",
         to,
         subject,
         html,
@@ -70,21 +72,7 @@ export async function sendEmail({
 }
 
 export async function sendOTPEmail(email: string, otp: string) {
-  const subject = "Verify your email address - NextDoorClinic";
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h2 style="color: #2563eb; margin-bottom: 16px;">NextDoorClinic Email Verification</h2>
-      <p style="color: #475569; font-size: 16px; line-height: 24px;">
-        You requested a verification code to complete your pharmacy booking. Use the code below to verify your email address. This code will expire in 10 minutes.
-      </p>
-      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-radius: 8px; margin: 24px 0;">
-        <span style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #1e3a8a;">${otp}</span>
-      </div>
-      <p style="color: #64748b; font-size: 14px;">
-        If you did not request this booking, you can safely ignore this email.
-      </p>
-    </div>
-  `;
+  const { subject, html } = await getRenderedTemplate("EMAIL_VERIFICATION", { otp });
   return sendEmail({ to: email, subject, html });
 }
 
@@ -98,7 +86,7 @@ export async function sendBookingConfirmationEmail(
     bookingId: string;
   }
 ) {
-  const formattedTime = new Date(details.startTime).toLocaleString("en-US", {
+  const formattedTime = new Date(details.startTime).toLocaleString("en-GB", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -107,19 +95,17 @@ export async function sendBookingConfirmationEmail(
     minute: "2-digit",
   });
 
-  const html = await render(
-    React.createElement(BookingConfirmationEmail, {
-      patientName: details.patientName,
-      branchName: details.branchName,
-      serviceName: details.serviceName,
-      formattedTime,
-      bookingId: details.bookingId,
-    })
-  );
+  const { subject, html } = await getRenderedTemplate("BOOKING_CONFIRMATION", {
+    patientName: details.patientName,
+    providerName: details.branchName,
+    serviceName: details.serviceName,
+    formattedTime,
+    bookingId: details.bookingId,
+  });
 
   return sendEmail({
     to: email,
-    subject: "Booking Confirmed - NextDoorClinic",
+    subject,
     html,
   });
 }

@@ -12,11 +12,17 @@ import {
   Quote,
   Sparkles,
   Star,
+  Eye,
+  EyeOff,
+  Building2,
+  UserCheck,
+  ArrowRight,
 } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -28,7 +34,7 @@ export default function LoginPage() {
     startTransition(async () => {
       const res = await loginAction({ email, password });
       if (!res.success) {
-        setError(res.error || "Login failed");
+        setError(res.error || "Login failed. Please check your credentials.");
       } else {
         try {
           // Fetch current session to determine user role and redirect target
@@ -44,12 +50,7 @@ export default function LoginPage() {
                 return;
               }
 
-              if (role === "super_admin") {
-                window.location.href = "/admin";
-                return;
-              }
-
-              if (role === "platform_admin") {
+              if (role === "super_admin" || role === "platform_admin") {
                 window.location.href = "/admin";
                 return;
               }
@@ -80,36 +81,45 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-slate-50 font-sans dark:bg-zinc-950 lg:grid-cols-[1fr_1.1fr]">
-      {/* ================= LEFT SIDE: PREMIUM BRAND SHOWCASE (lg+ only) ================= */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-brand-navy p-12 text-white lg:flex">
-        {/* Glowing Background Radial Mesh */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.15),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.12),transparent_50%)]" />
+    <div className="grid min-h-screen bg-slate-50 font-sans dark:bg-zinc-950 lg:grid-cols-[1.1fr_1fr]">
+      {/* ========================================================================= */}
+      {/* LEFT SIDE: EDITORIAL BRAND & TRUST SHOWCASE */}
+      {/* ========================================================================= */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-[#000e35] via-[#0F172A] to-slate-900 p-12 text-white lg:flex">
+        {/* Soft Background Mesh */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.18),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.15),transparent_55%)]" />
 
         {/* Brand Header */}
         <div className="relative z-10">
-          <Link href="/" className="inline-block">
-            <img
-              src="/assets/header-logo.png"
-              alt="NextDoorClinic"
-              className="h-10 w-auto object-contain brightness-0 invert"
-            />
+          <Link href="/" className="inline-flex items-center space-x-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#10B981] text-base font-black text-white shadow-lg ring-4 ring-emerald-500/20">
+              NC
+            </div>
+            <div>
+              <span className="block text-base font-black tracking-tight text-white">
+                NextDoorClinic
+              </span>
+              <span className="block text-[9px] font-extrabold uppercase tracking-widest text-emerald-400">
+                UK Healthcare Network
+              </span>
+            </div>
           </Link>
         </div>
 
-        {/* Content Block */}
-        <div className="relative z-10 my-auto max-w-lg space-y-10">
-          <div className="space-y-4">
-            <span className="inline-flex select-none items-center gap-1.5 rounded-full border border-brand-teal/20 bg-brand-teal/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-brand-teal">
-              <Sparkles className="size-3" /> Partner Clinical Portal
+        {/* Middle Content Hero */}
+        <div className="relative z-10 my-auto max-w-lg space-y-8">
+          <div className="space-y-3">
+            <span className="inline-flex select-none items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300 backdrop-blur-md">
+              <Sparkles className="h-3.5 w-3.5 text-[#10B981]" /> Verified Clinical Gateway
             </span>
-            <h1 className="font-display text-4xl font-black leading-[1.1] tracking-tight sm:text-5xl">
-              Streamline your clinic operations.
+
+            <h1 className="font-display text-4xl font-black leading-tight tracking-tight text-white lg:text-5xl">
+              Access your clinical portal.
             </h1>
-            <p className="text-slate-350 text-sm font-normal leading-relaxed">
-              Log in to access your NextDoorClinic branch dashboard. Manage same-day clinical slot
-              availability, review patient intakes, track payouts, and coordinate compliance
-              documentation.
+
+            <p className="text-xs font-medium leading-relaxed text-slate-300 sm:text-sm">
+              Log in to manage appointments, sync GPhC pharmacy schedules, review patient intakes,
+              or track your healthcare records seamlessly.
             </p>
           </div>
 
@@ -117,20 +127,22 @@ export default function LoginPage() {
           <div className="space-y-4 pt-2">
             {[
               {
+                title: "Unified Patient & Provider Portal",
+                desc: "One secure gateway for patients, clinical prescribers, and pharmacy owners.",
+              },
+              {
+                title: "GPhC & CQC Compliant Audit Trail",
+                desc: "Automated consultation logs, prescription tracking, and NHS integrations.",
+              },
+              {
                 title: "Real-time Slot Synchronizer",
-                desc: "Instantly update availability across the NHS-verified patient marketplace.",
-              },
-              {
-                title: "CQC Audit compliance",
-                desc: "Automated audit trails, clinical logging, and secure GDPR communications.",
-              },
-              {
-                title: "Automated B2B Payouts",
-                desc: "Next-day Stripe clearances for private GP and specialist clinical services.",
+                desc: "Instant booking confirmation with zero waiting or double bookings.",
               },
             ].map((pt, idx) => (
               <div key={idx} className="flex gap-3">
-                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-brand-teal" />
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-[#10B981]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
                 <div className="space-y-0.5">
                   <h4 className="text-xs font-black uppercase tracking-wider text-white">
                     {pt.title}
@@ -142,49 +154,54 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Brand Footer & Testimonial Quote */}
-        <div className="relative z-10 border-t border-white/10 pt-6">
+        {/* Footer Review Quote */}
+        <div className="relative z-10 border-t border-slate-800 pt-6">
           <div className="space-y-3">
-            <div className="flex gap-1">
+            <div className="flex gap-1 text-amber-400">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className="size-3.5 fill-brand-teal text-brand-teal" />
+                <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
               ))}
             </div>
-            <p className="relative text-[12px] font-medium italic leading-relaxed text-slate-300">
-              <Quote className="pointer-events-none absolute -left-2 -top-3 size-8 text-white/5" />
-              &quot;The NextDoorClinic portal has completely eliminated clinical slot management
-              overheads. Our flu vaccine appointment volume rose by 140% in two months.&quot;
+            <p className="relative text-xs font-medium italic leading-relaxed text-slate-300">
+              <Quote className="pointer-events-none absolute -left-2 -top-3 h-8 w-8 text-white/5" />
+              &quot;NextDoorClinic eliminated all scheduling overhead for our pharmacy group.
+              Patients book microsuction and travel vaccinations effortlessly.&quot;
             </p>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Director • Newman&apos;s Pharmacy Group
+            <div className="text-[10px] font-bold uppercase tracking-widest text-[#10B981]">
+              Director • Newman&apos;s Pharmacy Group • Leeds
             </div>
           </div>
         </div>
       </div>
 
-      {/* ================= RIGHT SIDE: AUTHENTICATION FORM ================= */}
+      {/* ========================================================================= */}
+      {/* RIGHT SIDE: AUTHENTICATION FORM */}
+      {/* ========================================================================= */}
       <div className="relative flex flex-col items-center justify-center overflow-hidden bg-white px-6 py-12 dark:bg-zinc-950 sm:px-12 lg:px-16">
-        {/* Soft Decorative Ambient Background for Mobile/Tablet */}
-        <div className="pointer-events-none absolute right-[-10%] top-[-10%] h-[300px] w-[300px] rounded-full bg-brand-teal/5 blur-3xl lg:hidden" />
+        {/* Soft Background Accent */}
+        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-[#10B981]/10 blur-3xl lg:hidden" />
 
         <div className="w-full max-w-md space-y-8">
-          {/* Header (Desktop & Mobile) */}
-          <div className="flex flex-col items-center space-y-4 lg:items-start lg:text-left">
-            <Link href="/" className="block">
-              <img
-                src="/assets/header-logo.png"
-                alt="NextDoorClinic Logo"
-                className="h-10 w-auto object-contain"
-              />
+          {/* Header & Logo */}
+          <div className="flex flex-col items-center space-y-4 text-center lg:items-start lg:text-left">
+            <Link href="/" className="flex items-center space-x-2 lg:hidden">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#10B981] text-xs font-black text-white shadow-md">
+                NC
+              </div>
+              <span className="text-base font-black text-slate-900 dark:text-white">
+                NextDoorClinic
+              </span>
             </Link>
 
-            <div className="space-y-1.5 text-center lg:text-left">
-              <h2 className="text-2xl font-black tracking-tight text-brand-navy dark:text-white sm:text-3xl">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#10B981]">
+                Welcome Back
+              </span>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Sign in to your account
               </h2>
-              <p className="max-w-xs text-xs font-normal leading-relaxed text-slate-500 dark:text-zinc-400">
-                Access your clinical workspace, sync calendars, and review incoming patient
-                requests.
+              <p className="mx-auto max-w-xs text-xs text-slate-500 dark:text-zinc-400 lg:mx-0">
+                Enter your credentials to access your patient portal or pharmacy workspace.
               </p>
             </div>
           </div>
@@ -192,17 +209,17 @@ export default function LoginPage() {
           {/* Form */}
           <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
             {error && (
-              <div className="dark:text-rose-455 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs font-semibold leading-relaxed text-rose-600">
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-xs font-bold text-rose-600 animate-in fade-in dark:text-rose-400">
                 {error}
               </div>
             )}
 
             <div className="space-y-4">
-              {/* Email Address */}
-              <div>
+              {/* Email Input */}
+              <div className="space-y-1.5">
                 <label
                   htmlFor="email"
-                  className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300"
+                  className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300"
                 >
                   Email Address
                 </label>
@@ -217,24 +234,24 @@ export default function LoginPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
-                    placeholder="name@pharmacy.com"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 pl-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white dark:focus:border-[#10B981]"
+                    placeholder="name@example.com"
                   />
                 </div>
               </div>
 
-              {/* Password */}
-              <div>
-                <div className="mb-1.5 flex items-center justify-between">
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
                   <label
                     htmlFor="password"
-                    className="block text-[10px] font-extrabold uppercase tracking-wider text-brand-navy dark:text-zinc-300"
+                    className="block text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300"
                   >
                     Password
                   </label>
                   <Link
                     href="/reset-password"
-                    className="text-[10px] font-bold text-brand-teal hover:underline"
+                    className="text-[11px] font-bold text-[#10B981] hover:underline"
                   >
                     Forgot password?
                   </Link>
@@ -246,80 +263,90 @@ export default function LoginPage() {
                   <input
                     id="password"
                     name="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 pl-11 text-xs font-semibold placeholder-slate-400 outline-none transition-all focus:border-brand-teal focus:ring-brand-teal dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 pl-11 pr-11 text-xs font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-[#10B981] focus:bg-white focus:ring-2 focus:ring-[#10B981]/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white dark:focus:border-[#10B981]"
                     placeholder="••••••••"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Remember Me checkbox */}
-            <div className="flex select-none items-center justify-between pt-1 text-xs">
-              <label className="flex cursor-pointer items-center gap-2">
+            {/* Remember Me */}
+            <div className="flex select-none items-center justify-between pt-1">
+              <label className="flex cursor-pointer items-center space-x-2">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="border-slate-350 size-4 shrink-0 rounded text-brand-teal focus:ring-brand-teal dark:border-zinc-700"
+                  className="h-4 w-4 rounded border-slate-300 text-[#10B981] focus:ring-[#10B981]"
                 />
-                <span className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400">
-                  Remember Me
+                <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400">
+                  Keep me signed in
                 </span>
               </label>
             </div>
 
             {/* Submit Button */}
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="group relative flex w-full select-none justify-center rounded-xl border border-transparent bg-brand-navy px-4 py-3.5 text-xs font-bold text-white shadow-md shadow-brand-navy/10 transition-all hover:bg-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal focus:ring-offset-2 active:scale-[0.99] disabled:opacity-50"
-              >
-                {isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-white" />
-                ) : (
-                  "Sign In to Workspace"
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="flex w-full items-center justify-center space-x-2 rounded-2xl bg-[#10B981] px-4 py-3.5 text-xs font-black text-white shadow-md transition-all hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:ring-offset-2 active:scale-95 disabled:opacity-50"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+              ) : (
+                <>
+                  <span>Sign In to Account</span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
           </form>
 
-          {/* Onboarding Callout Footer */}
-          <div className="space-y-4 border-t border-slate-100 pt-6 text-center dark:border-zinc-800/60 lg:text-left">
-            <div className="space-y-1 text-center lg:text-left">
-              <h4 className="text-slate-850 dark:text-zinc-350 text-[11px] font-black uppercase tracking-wider">
+          {/* Registration Options Footer */}
+          <div className="dark:border-zinc-850 space-y-4 border-t border-slate-100 pt-6 text-center lg:text-left">
+            <div className="space-y-1">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                 New to NextDoorClinic?
               </h4>
-              <p className="text-slate-450 dark:text-zinc-450 text-[10px] font-normal leading-relaxed">
-                Create your profile to start booking appointments or managing your clinical
-                workspace.
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
+                Create your patient profile or register your pharmacy clinic.
               </p>
             </div>
 
-            <div className="grid w-full gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <Link
                 href="/register"
-                className="dark:text-emerald-450 flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/50 px-3 py-2.5 text-center text-[10px] font-black uppercase tracking-wider text-emerald-600 transition-colors hover:bg-emerald-500/10"
+                className="shadow-xs flex items-center justify-center space-x-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-black text-slate-800 transition-all hover:border-[#10B981] hover:bg-emerald-50 hover:text-[#10B981] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
               >
-                Register as Patient
+                <UserCheck className="h-3.5 w-3.5 text-[#10B981]" />
+                <span>Patient Sign Up</span>
               </Link>
               <Link
                 href="/register-clinic"
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-teal/50 px-3 py-2.5 text-center text-[10px] font-black uppercase tracking-wider text-brand-teal transition-colors hover:bg-brand-teal/10"
+                className="shadow-xs flex items-center justify-center space-x-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 px-3 py-2.5 text-xs font-black text-[#10B981] transition-all hover:bg-[#10B981] hover:text-white dark:border-emerald-900/60 dark:bg-emerald-950/40"
               >
-                Register Clinic
+                <Building2 className="h-3.5 w-3.5" />
+                <span>Register Clinic</span>
               </Link>
             </div>
 
-            <div className="flex justify-center lg:justify-start">
-              <div className="inline-flex select-none items-center space-x-1.5 rounded-lg border border-slate-200/50 bg-slate-50 px-3 py-1.5 dark:border-zinc-800/80 dark:bg-zinc-900/40">
-                <ShieldCheck className="h-4 w-4 shrink-0 text-brand-teal" />
-                <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  NHS Verified Clinical Gateway
+            <div className="flex justify-center pt-2 lg:justify-start">
+              <div className="inline-flex select-none items-center space-x-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                <ShieldCheck className="h-4 w-4 text-[#10B981]" />
+                <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
+                  NHS & GPhC Verified Security Standard
                 </span>
               </div>
             </div>

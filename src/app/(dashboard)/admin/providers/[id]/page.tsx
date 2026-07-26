@@ -29,6 +29,8 @@ import {
   updateProviderBrandingAction,
 } from "@/actions/super-admin";
 import { WebsiteIntegrationPanel } from "./website-integration-panel";
+import { WebsiteUrlExport } from "./website-url-export";
+import { getPharmacyUrlExportData } from "@/actions/url-export";
 
 export const revalidate = 0;
 
@@ -236,6 +238,7 @@ export default async function ProviderDetailsPage({ params, searchParams }: Page
         {[
           { id: "overview", label: "Business Profile" },
           { id: "services", label: "Services & Staff" },
+          { id: "url-export", label: "Website URL Export" },
           { id: "integration", label: "Website Integration" },
           { id: "bookings", label: "Bookings Summary" },
           { id: "subscription", label: "Subscription" },
@@ -540,7 +543,12 @@ export default async function ProviderDetailsPage({ params, searchParams }: Page
         </div>
       )}
 
-      {/* 2.5 Website Integration */}
+      {/* Website URL Export Tab Panel */}
+      {activeTab === "url-export" && (
+        <WebsiteUrlExport initialData={await getPharmacyUrlExportData(id)} />
+      )}
+
+      {/* 2. Website Integration */}
       {activeTab === "integration" && (
         <WebsiteIntegrationPanel
           pharmacySlug={provider.slug}

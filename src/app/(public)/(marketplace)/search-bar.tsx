@@ -445,6 +445,9 @@ export function SearchBar({
     if (inputRef.current) {
       inputRef.current.focus();
     }
+    if (onSearch) {
+      onSearch("", service);
+    }
   };
 
   const clearServiceInput = () => {
@@ -452,6 +455,9 @@ export function SearchBar({
     setServiceSuggestions([]);
     if (serviceInputRef.current) {
       serviceInputRef.current.focus();
+    }
+    if (onSearch) {
+      onSearch(location, "");
     }
   };
 
