@@ -19,6 +19,15 @@ import {
 export default function RegisterClinicPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("ndc_provider_intent", "true");
+      document.cookie = "ndc_provider_intent=true; path=/; max-age=31536000;";
+    } catch (err) {
+      // Ignore fallback
+    }
+  }, []);
+
   const toggleFaq = (idx: number) => {
     setOpenFaq(openFaq === idx ? null : idx);
   };

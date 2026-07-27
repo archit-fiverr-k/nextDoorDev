@@ -223,8 +223,20 @@ const HEALTHCARE_ARTICLES = [
 
 export function LandingPageView({ approvedProviders }: LandingPageViewProps) {
   const [showStickySearch, setShowStickySearch] = useState(false);
+  const [hasProviderInterest, setHasProviderInterest] = useState(false);
 
   useEffect(() => {
+    try {
+      const storedIntent =
+        localStorage.getItem("ndc_provider_intent") === "true" ||
+        document.cookie.includes("ndc_provider_intent=true");
+      if (storedIntent) {
+        setHasProviderInterest(true);
+      }
+    } catch (err) {
+      // Ignore SSR / browser security errors
+    }
+
     const handleScroll = () => {
       if (window.scrollY > 420) {
         setShowStickySearch(true);
@@ -236,6 +248,15 @@ export function LandingPageView({ approvedProviders }: LandingPageViewProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const markProviderInterest = () => {
+    try {
+      localStorage.setItem("ndc_provider_intent", "true");
+      document.cookie = "ndc_provider_intent=true; path=/; max-age=31536000;";
+    } catch (err) {
+      // Ignore fallback
+    }
+  };
+
   return (
     <div className="w-full select-text bg-white pb-20 font-sans text-slate-900 antialiased dark:bg-zinc-950 dark:text-zinc-50">
       {/* ========================================================================= */}
@@ -246,19 +267,22 @@ export function LandingPageView({ approvedProviders }: LandingPageViewProps) {
         <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#10B981]/15 blur-3xl" />
 
         <div className="mx-auto max-w-7xl">
-          {/* Pharmacy Owner Announcement Header Banner */}
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/40">
-            <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900 dark:text-emerald-300">
-              <Building2 className="h-4 w-4 text-[#10B981]" />
-              <span>Are you an independent pharmacy owner or healthcare provider?</span>
+          {/* Pharmacy Owner Announcement Header Banner (Only shown to users who clicked/showed provider registration interest) */}
+          {hasProviderInterest && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/40">
+              <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                <Building2 className="h-4 w-4 text-[#10B981]" />
+                <span>Are you an independent pharmacy owner or healthcare provider?</span>
+              </div>
+              <Link
+                href="/register-clinic"
+                onClick={markProviderInterest}
+                className="inline-flex items-center space-x-1 text-xs font-extrabold text-[#10B981] hover:underline"
+              >
+                <span>List Your Clinic & Services →</span>
+              </Link>
             </div>
-            <Link
-              href="/register-clinic"
-              className="inline-flex items-center space-x-1 text-xs font-extrabold text-[#10B981] hover:underline"
-            >
-              <span>List Your Clinic & Services →</span>
-            </Link>
-          </div>
+          )}
 
           <div className="grid items-center gap-8 lg:grid-cols-12">
             {/* Left Copy & Search (Exposed immediately in viewport) */}
