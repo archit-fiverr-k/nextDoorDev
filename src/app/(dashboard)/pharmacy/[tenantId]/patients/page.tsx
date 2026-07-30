@@ -29,13 +29,14 @@ export default async function PatientsPage({ params }: PatientsPageProps) {
 
   const pharmacyId = pharmacy.id;
 
-  // Fetch patients with appointments & crm notes
+  // Fetch patients with appointments & crm notes for this pharmacy
   const patients = await db.customer.findMany({
     where: {
-      pharmacyId,
+      OR: [{ pharmacyId }, { appointments: { some: { pharmacyId } } }],
     },
     include: {
       appointments: {
+        where: { pharmacyId },
         include: {
           service: true,
         },
@@ -44,11 +45,13 @@ export default async function PatientsPage({ params }: PatientsPageProps) {
         },
       },
       crmNotes: {
+        where: { pharmacyId },
         orderBy: {
           createdAt: "desc",
         },
       },
       communicationsLog: {
+        where: { pharmacyId },
         orderBy: {
           createdAt: "desc",
         },

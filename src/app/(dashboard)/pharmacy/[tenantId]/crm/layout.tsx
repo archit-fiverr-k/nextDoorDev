@@ -45,10 +45,10 @@ export default async function PharmacyCRMLayout({ params, children }: CRMLayoutP
 
   const pharmacyId = pharmacy.id;
 
-  // Load all customers with appointment counts
+  // Load all customers with appointment counts for this pharmacy
   const customers = await db.customer.findMany({
     where: {
-      pharmacyId,
+      OR: [{ pharmacyId }, { appointments: { some: { pharmacyId } } }],
     },
     select: {
       id: true,
@@ -60,7 +60,9 @@ export default async function PharmacyCRMLayout({ params, children }: CRMLayoutP
       dateOfBirth: true,
       _count: {
         select: {
-          appointments: true,
+          appointments: {
+            where: { pharmacyId },
+          },
         },
       },
     },

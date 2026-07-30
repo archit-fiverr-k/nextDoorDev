@@ -20,7 +20,13 @@ export async function getDashboardAnalyticsAction(pharmacyId?: string) {
         _sum: { amount: true },
       }),
       db.appointment.count({ where: wherePharmacy }),
-      db.customer.count({ where: wherePharmacy }),
+      db.customer.count({
+        where: pharmacyId
+          ? {
+              OR: [{ pharmacyId }, { appointments: { some: { pharmacyId } } }],
+            }
+          : {},
+      }),
       db.review.aggregate({
         where: { ...wherePharmacy, status: "APPROVED" },
         _avg: { rating: true },
