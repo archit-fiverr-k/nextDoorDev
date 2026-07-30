@@ -55,13 +55,16 @@ export function renderEmailTemplateLayout({
     body {
       margin: 0;
       padding: 0;
-      background-color: #FFFFFF;
+      background-color: transparent !important;
+      background: transparent !important;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       color: #334155;
     }
     table {
       border-collapse: collapse;
+      background-color: transparent !important;
+      background: transparent !important;
     }
     @media only screen and (max-width: 600px) {
       .email-container { width: 100% !important; padding: 16px 12px !important; }
@@ -72,11 +75,11 @@ export function renderEmailTemplateLayout({
     }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155;">
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFFFF; table-layout: fixed; padding: 20px 0;">
+<body style="margin: 0; padding: 0; background-color: transparent; background: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: transparent; background: transparent; table-layout: fixed; padding: 20px 0;">
     <tr>
-      <td align="center">
-        <table border="0" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width: 620px; margin: 0 auto; padding: 24px 20px;">
+      <td align="center" style="background-color: transparent; background: transparent;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width: 620px; margin: 0 auto; padding: 24px 20px; background-color: transparent; background: transparent;">
           
           <!-- TOP HEADER: LOGO & STATUS BADGE -->
           <tr>

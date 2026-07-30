@@ -86,6 +86,7 @@ export default async function EmailTemplatesPage({ searchParams }: PageProps) {
   const isOldCardLayout =
     template &&
     (!template.body.includes("max-width: 620px") ||
+      template.body.includes("background-color: #FFFFFF") ||
       !template.body.includes("Important Patient Guidance:") ||
       !template.body.includes("APPOINTMENT SUMMARY"));
 
@@ -365,7 +366,7 @@ export default async function EmailTemplatesPage({ searchParams }: PageProps) {
                   <span>SMTP Secure Mode</span>
                 </div>
                 <div
-                  className="overflow-x-auto bg-white p-6 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
+                  className="overflow-x-auto bg-transparent p-6 text-slate-900 dark:text-slate-100"
                   dangerouslySetInnerHTML={{ __html: preview.body }}
                 />
               </div>
