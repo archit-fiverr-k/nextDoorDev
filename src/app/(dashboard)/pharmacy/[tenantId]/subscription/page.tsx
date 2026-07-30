@@ -158,6 +158,51 @@ export default function SubscriptionPage({ params }: SubscriptionPageProps) {
           );
         })}
       </div>
+
+      {/* Integrated Billing & Invoices Section */}
+      <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-950">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-zinc-900">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-slate-50">
+              Payment Method & Invoices
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Manage credit cards, auto-renewal settings, and download VAT receipts.
+            </p>
+          </div>
+          <button className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+            Update Payment Method
+          </button>
+        </div>
+
+        <div className="divide-y divide-slate-100 text-xs dark:divide-zinc-900">
+          {[
+            { id: "INV-2026-007", date: "20 July 2026", amount: "£99.00", status: "Paid" },
+            { id: "INV-2026-006", date: "20 June 2026", amount: "£99.00", status: "Paid" },
+            { id: "INV-2026-005", date: "20 May 2026", amount: "£99.00", status: "Paid" },
+          ].map((inv) => (
+            <div key={inv.id} className="flex items-center justify-between py-3">
+              <div className="flex items-center space-x-3">
+                <CreditCard className="h-4 w-4 text-emerald-600" />
+                <div>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">{inv.id}</span>
+                  <span className="block text-[10px] text-slate-400">{inv.date}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-4">
+                <span className="font-extrabold text-slate-900 dark:text-slate-100">
+                  {inv.amount}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  {inv.status}
+                </span>
+                <button className="font-bold text-[#10B981] hover:underline">Download PDF</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

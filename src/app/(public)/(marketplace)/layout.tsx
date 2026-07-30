@@ -68,30 +68,21 @@ export default async function MarketplaceLayout({ children }: { children: React.
         .toUpperCase()
     : "U";
 
-  // Compute dashboard href based on user role
-  let dashboardHref = "/patient/dashboard";
-  if (user?.role === "super_admin" || user?.role === "platform_admin") {
-    dashboardHref = "/admin";
-  } else if (user?.role === "pharmacy" || user?.role === "staff") {
-    dashboardHref = user?.pharmacyId ? `/pharmacy/${user.pharmacyId}` : "/provider";
-  } else if (user?.role === "patient") {
-    dashboardHref = "/patient/dashboard";
-  } else if (user?.pharmacyId) {
-    dashboardHref = `/pharmacy/${user.pharmacyId}`;
-  }
-
-  // Fetch pharmacy details if user is a pharmacy owner / staff
   let pharmacyName = "";
+  let pharmacySlug = "";
   const isPharmacyUser = user?.role === "pharmacy" || user?.role === "staff" || !!user?.pharmacyId;
 
   if (isPharmacyUser && user?.pharmacyId) {
     try {
       const pharm = await db.pharmacy.findUnique({
         where: { id: user.pharmacyId },
-        select: { name: true },
+        select: { name: true, slug: true },
       });
       if (pharm?.name) {
         pharmacyName = pharm.name;
+      }
+      if (pharm?.slug) {
+        pharmacySlug = pharm.slug;
       }
     } catch (err) {
       console.error("Error fetching pharmacy in layout:", err);
@@ -100,6 +91,34 @@ export default async function MarketplaceLayout({ children }: { children: React.
 
   if (isPharmacyUser && !pharmacyName) {
     pharmacyName = user?.name || "My Pharmacy Clinic";
+  }
+
+  // Compute dashboard href based on user role
+  let dashboardHref = "/patient/dashboard";
+  if (user?.role === "super_admin" || user?.role === "platform_admin") {
+    dashboardHref = "/admin";
+  } else if (user?.role === "pharmacy" || user?.role === "staff") {
+    dashboardHref = user?.pharmacyId ? `/pharmacy/${pharmacySlug || user.pharmacyId}` : "/pharmacy";
+  } else if (user?.role === "patient") {
+    dashboardHref = "/patient/dashboard";
+  } else if (user?.pharmacyId) {
+    dashboardHref = `/pharmacy/${pharmacySlug || user.pharmacyId}`;
+  }
+
+  // Fetch Master Service Categories from PDF catalogue
+  let serviceCategories: any[] = [];
+  try {
+    serviceCategories = await db.serviceCategory.findMany({
+      include: {
+        masterServices: {
+          where: { status: "ACTIVE" },
+          orderBy: { name: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+  } catch (err) {
+    console.error("Error fetching service categories for layout menu header:", err);
   }
 
   return (
@@ -156,6 +175,7 @@ export default async function MarketplaceLayout({ children }: { children: React.
               pharmacyName={pharmacyName}
               dashboardHref={dashboardHref}
               isPharmacyUser={isPharmacyUser}
+              serviceCategories={serviceCategories}
             />
 
             <Link href="/" className="group flex shrink-0 items-center">
@@ -239,217 +259,79 @@ export default async function MarketplaceLayout({ children }: { children: React.
           </div>
         </div>
 
-        {/* BOTTOM ROW: Solid #0F172A dark slate navigation bar with dropdown menus */}
-        <div className="border-slate-850 hidden h-11 items-center border-b bg-[#0F172A] px-6 text-slate-200 shadow-sm lg:flex lg:px-8">
-          <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-start">
+        {/* BOTTOM ROW: Compact #0F172A dark slate navigation bar */}
+        <div className="border-slate-850 shadow-xs hidden h-10 items-center border-b bg-[#0F172A] px-6 text-slate-200 lg:flex lg:px-8">
+          <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-start space-x-1">
             {/* Home Icon Link */}
             <Link
               href="/"
-              className="flex h-full shrink-0 items-center justify-center px-4 text-slate-400 transition-all hover:bg-slate-800/60 hover:text-white"
+              className="flex h-full shrink-0 items-center justify-center px-3 text-slate-400 transition-all hover:bg-slate-800/60 hover:text-white"
             >
               <Home className="h-4 w-4" />
             </Link>
 
-            {/* Men's Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Men&apos;s Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Hair Loss"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Hair Loss
-                </Link>
-                <Link
-                  href="/services?query=Erectile Dysfunction"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Erectile Dysfunction
-                </Link>
-                <Link
-                  href="/services?query=Premature Ejaculation"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Premature Ejaculation
-                </Link>
-              </div>
-            </div>
-
-            {/* Women's Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Women&apos;s Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Cystitis"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Cystitis / UTI
-                </Link>
-                <Link
-                  href="/services?query=Period Delay"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Period Delay
-                </Link>
-                <Link
-                  href="/services?query=Contraception"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Contraceptive Pill
-                </Link>
-              </div>
-            </div>
-
-            {/* Minor Ailments (NHS Pharmacy First dropdown) */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Minor Ailments</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-64 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <div className="mb-1.5 select-none border-b border-slate-100 px-4 pb-1.5 dark:border-zinc-900">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    NHS Pharmacy First
-                  </span>
+            {/* Top 4 Primary Categories */}
+            {serviceCategories.slice(0, 4).map((cat) => (
+              <div key={cat.id} className="group relative h-full shrink-0">
+                <button className="flex h-full cursor-pointer items-center space-x-1 border-none bg-transparent px-3 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
+                  <span>{cat.name}</span>
+                  <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
+                </button>
+                <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 max-h-96 w-64 translate-y-1 overflow-y-auto rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
+                  <div className="mb-1.5 select-none border-b border-slate-100 px-4 pb-1.5 dark:border-zinc-900">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      {cat.name}
+                    </span>
+                  </div>
+                  {cat.masterServices.map((svc: any) => (
+                    <Link
+                      key={svc.id}
+                      href={`/search?service=${encodeURIComponent(svc.name)}`}
+                      className="block px-4 py-1.5 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
+                    >
+                      {svc.name}
+                    </Link>
+                  ))}
                 </div>
-                {pharmacyFirstConditions.map((cond) => (
-                  <Link
-                    key={cond.id}
-                    href={`/services?query=${encodeURIComponent(cond.label)}`}
-                    className="block px-4 py-1.5 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                  >
-                    {cond.label}
-                  </Link>
-                ))}
               </div>
-            </div>
+            ))}
 
-            {/* General Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>General Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Blood Pressure Check"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Blood Pressure Check
-                </Link>
-                <Link
-                  href="/services?query=Blood Tests"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Blood Screening Tests
-                </Link>
+            {/* More Categories Dropdown (If > 4 categories exist) */}
+            {serviceCategories.length > 4 && (
+              <div className="group relative h-full shrink-0">
+                <button className="flex h-full cursor-pointer items-center space-x-1 border-none bg-transparent px-3 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
+                  <span>More Categories</span>
+                  <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
+                </button>
+                <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 max-h-96 w-72 translate-y-1 divide-y divide-slate-100 overflow-y-auto rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:divide-zinc-900 dark:bg-zinc-950">
+                  {serviceCategories.slice(4).map((cat) => (
+                    <div key={cat.id} className="py-2 first:pt-0 last:pb-0">
+                      <div className="px-4 py-1">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                          {cat.name}
+                        </span>
+                      </div>
+                      {cat.masterServices.map((svc: any) => (
+                        <Link
+                          key={svc.id}
+                          href={`/search?service=${encodeURIComponent(svc.name)}`}
+                          className="block px-6 py-1 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
+                        >
+                          {svc.name}
+                        </Link>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Travel Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Travel Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Antimalarials"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Antimalarials
-                </Link>
-                <Link
-                  href="/services?query=Yellow Fever"
-                  className="block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50 hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Yellow Fever Vaccine
-                </Link>
-                <Link
-                  href="/services?query=Meningitis"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Meningitis Vaccine
-                </Link>
-              </div>
-            </div>
-
-            {/* Skin Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Skin Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Acne"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Acne Treatment
-                </Link>
-                <Link
-                  href="/services?query=Eczema"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Eczema & Dermatitis
-                </Link>
-                <Link
-                  href="/services?query=Psoriasis"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Psoriasis
-                </Link>
-              </div>
-            </div>
-
-            {/* Sexual Health Category Dropdown */}
-            <div className="group relative h-full shrink-0">
-              <button className="flex h-full cursor-pointer items-center space-x-1.5 border-none bg-transparent px-4 text-xs font-semibold text-slate-300 outline-none transition-all hover:bg-slate-800/40 hover:text-white">
-                <span>Sexual Health</span>
-                <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180 group-hover:text-white" />
-              </button>
-              <div className="dark:border-zinc-850 invisible absolute left-0 top-full z-50 w-56 translate-y-1 rounded-b-xl border border-slate-200/80 bg-white py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 dark:bg-zinc-950">
-                <Link
-                  href="/services?query=Chlamydia"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Chlamydia Treatment
-                </Link>
-                <Link
-                  href="/services?query=Cold Sores"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Oral Herpes / Cold Sores
-                </Link>
-                <Link
-                  href="/services?query=Emergency Contraception"
-                  className="hover:bg-slate-55 block px-4 py-2 text-xs font-medium text-slate-800 transition-colors hover:text-brand-teal dark:text-zinc-200 dark:hover:bg-zinc-900/60"
-                >
-                  Emergency Contraception
-                </Link>
-              </div>
-            </div>
-
-            {/* A-Z Conditions */}
+            {/* All Services Shortcut */}
             <Link
-              href="/services"
-              className="flex h-full shrink-0 items-center px-4 text-xs font-semibold text-slate-300 transition-all hover:bg-slate-800/40 hover:text-white"
+              href="/search"
+              className="ml-auto flex h-full shrink-0 items-center px-3 text-xs font-bold text-emerald-400 transition-all hover:bg-slate-800/40 hover:text-emerald-300"
             >
-              A-Z Conditions
-            </Link>
-
-            {/* A-Z Treatments */}
-            <Link
-              href="/services"
-              className="flex h-full shrink-0 items-center px-4 text-xs font-semibold text-slate-300 transition-all hover:bg-slate-800/40 hover:text-white"
-            >
-              A-Z Treatments
+              All Services (A-Z) &rarr;
             </Link>
           </div>
         </div>
@@ -458,42 +340,34 @@ export default async function MarketplaceLayout({ children }: { children: React.
       {/* Main Page Content */}
       <main className="flex w-full flex-1 flex-col bg-brand-bg/50 pb-16 md:pb-0">{children}</main>
 
-      {/* Premium Mobile Bottom Navigation Bar (app-like layout, hidden on desktop) */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 select-none items-center justify-around border-t border-border bg-white/90 shadow-[0_-8px_30px_rgb(0,0,0,0.06)] backdrop-blur-md dark:bg-zinc-950/90 md:hidden">
+      {/* Native Mobile Bottom Navigation Bar (Airbnb / Apple Health Style) */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 select-none items-center justify-around border-t border-slate-200/80 bg-white/95 px-4 shadow-lg backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/95 md:hidden">
         <Link
           href="/"
-          className="text-brand-muted flex flex-col items-center justify-center space-y-1 transition-all hover:text-brand-teal"
+          className="flex flex-col items-center justify-center space-y-1 text-slate-600 transition-colors hover:text-[#10B981] dark:text-zinc-400 dark:hover:text-white"
         >
           <Home className="h-5 w-5" />
           <span className="text-[10px] font-bold">Home</span>
         </Link>
 
         <Link
-          href="/providers"
-          className="text-brand-muted flex flex-col items-center justify-center space-y-1 transition-all hover:text-brand-teal"
+          href="/search"
+          className="flex flex-col items-center justify-center space-y-1 text-[#10B981] transition-colors hover:text-emerald-600"
         >
-          <Store className="h-5 w-5" />
-          <span className="text-[10px] font-bold">Clinics</span>
-        </Link>
-
-        <Link
-          href="/services"
-          className="text-brand-muted flex flex-col items-center justify-center space-y-1 transition-all hover:text-brand-teal"
-        >
-          <HeartPulse className="h-5 w-5" />
-          <span className="text-[10px] font-bold">Services</span>
+          <Search className="h-5 w-5 stroke-[2.5]" />
+          <span className="text-[10px] font-bold">Search</span>
         </Link>
 
         <Link
           href={user ? dashboardHref : "/login"}
-          className="text-brand-muted flex flex-col items-center justify-center space-y-1 transition-all hover:text-brand-teal"
+          className="flex flex-col items-center justify-center space-y-1 text-slate-600 transition-colors hover:text-[#10B981] dark:text-zinc-400 dark:hover:text-white"
         >
           {user ? (
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-brand-teal/20 bg-brand-teal/10 text-[9px] font-extrabold text-brand-teal">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-[9px] font-extrabold text-[#10B981]">
               {user.role === "super_admin" || user.role === "platform_admin" ? "AD" : initials}
             </div>
           ) : (
-            <ShieldCheck className="h-5 w-5" />
+            <User className="h-5 w-5" />
           )}
           <span className="text-[10px] font-bold">{user ? "Dashboard" : "Account"}</span>
         </Link>

@@ -39,6 +39,7 @@ model SuperAdmin {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String   @unique
   name         String?
+  role         String   @default("super_admin") @map("role")
   passwordHash String   @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -52,6 +53,7 @@ model PlatformAdmin {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String   @unique
   name         String?
+  role         String   @default("platform_admin") @map("role")
   passwordHash String   @map("password_hash")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -78,6 +80,7 @@ model Pharmacy {
   displayName  String?      @map("display_name")
   brandColor   String?      @map("brand_color")
   status       TenantStatus @default(PENDING)
+  role         String       @default("pharmacy") @map("role")
   email        String       @unique
   phone        String
   address      String
@@ -133,6 +136,7 @@ model Pharmacy {
 
   subscription      Subscription?
   subscriptionHistory SubscriptionHistory[]
+  pharmacyMasterServices PharmacyService[]
 
   @@map("pharmacies")
 }
@@ -206,6 +210,7 @@ model Customer {
   lastName     String    @map("last_name")
   email        String
   phone        String
+  role         String    @default("user") @map("role")
   dateOfBirth  DateTime? @map("date_of_birth") @db.Date
   passwordHash String?   @map("password_hash")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -494,6 +499,70 @@ model Category {
   servicesService Service[] @relation("ServiceCategory")
 
   @@map("service_categories")
+}
+
+model ServiceCategory {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String          @unique
+  slug        String          @unique
+  description String?         @db.Text
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  masterServices MasterService[]
+
+  @@map("master_service_categories")
+}
+
+model MasterService {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId       String          @map("category_id") @db.Uuid
+  name             String
+  slug             String          @unique
+  serviceType      String          @map("service_type") // NHS, PRIVATE
+  defaultPrice     Decimal         @default(0) @map("default_price") @db.Decimal(10, 2)
+  priceLocked      Boolean         @default(false) @map("price_locked")
+  bookingEnabled   Boolean         @default(true) @map("booking_enabled")
+  description      String?         @db.Text
+  shortDescription String?         @map("short_description") @db.Text
+  eligibility      String?         @db.Text
+  preparation      String?         @db.Text
+  aftercare        String?         @db.Text
+  keywords         String[]        @default([])
+  status           String          @default("ACTIVE") // ACTIVE, DRAFT, INACTIVE
+  seoTitle         String?         @map("seo_title")
+  seoDescription   String?         @map("seo_description") @db.Text
+  canonicalUrl     String?         @map("canonical_url")
+  schemaName       String?         @map("schema_name")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  category         ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  pharmacyServices PharmacyService[]
+
+  @@index([categoryId])
+  @@map("master_services")
+}
+
+model PharmacyService {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacyId      String        @map("pharmacy_id") @db.Uuid
+  masterServiceId String        @map("master_service_id") @db.Uuid
+  enabled         Boolean       @default(true)
+  priceOverride   Decimal?      @map("price_override") @db.Decimal(10, 2)
+  duration        Int           @default(15)
+  availability    Json?         @default("[]")
+  bookingEnabled  Boolean       @default(true) @map("booking_enabled")
+  internalNotes   String?       @map("internal_notes") @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  pharmacy        Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  masterService   MasterService @relation(fields: [masterServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacyId, masterServiceId])
+  @@map("pharmacy_master_services")
 }
 
 model CmsPage {

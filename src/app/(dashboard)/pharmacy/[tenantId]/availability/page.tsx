@@ -12,46 +12,54 @@ interface PharmacyAvailabilityPageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyAvailabilityPage({ params }: PharmacyAvailabilityPageProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
+
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
+  });
+
+  if (!pharmacy) {
+    notFound();
+  }
 
   // Tenant Boundary Guard
   const isTenantUser = session.user.role === "pharmacy";
   const isPlatformAdmin =
     session.user.role === "super_admin" || session.user.role === "platform_admin";
 
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
     redirect("/");
   }
   if (!isTenantUser && !isPlatformAdmin) {
     redirect("/");
   }
 
+  const pharmacyId = pharmacy.id;
+
   // Load existing availability, blocked dates, and pharmacy booking configurations
-  const [availability, blockedDates, pharmacy] = await Promise.all([
+  const [availability, blockedDates] = await Promise.all([
     db.availability.findMany({
       where: {
-        pharmacyId: params.tenantId,
+        pharmacyId,
       },
     }),
     db.blockedDate.findMany({
       where: {
-        pharmacyId: params.tenantId,
+        pharmacyId,
       },
       orderBy: {
         date: "asc",
       },
     }),
-    db.pharmacy.findUnique({
-      where: {
-        id: params.tenantId,
-      },
-    }),
   ]);
-
-  if (!pharmacy) {
-    notFound();
-  }
 
   return (
     <div className="space-y-6">
@@ -64,7 +72,7 @@ export default async function PharmacyAvailabilityPage({ params }: PharmacyAvail
       </div>
 
       <AvailabilityView
-        pharmacyId={params.tenantId}
+        pharmacyId={pharmacyId}
         initialAvailability={availability}
         initialBlockedDates={blockedDates}
         pharmacy={pharmacy}

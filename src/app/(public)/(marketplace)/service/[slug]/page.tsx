@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import { slugify } from "@/lib/slug";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import {
@@ -172,7 +173,7 @@ export default async function ServiceDetailsPage({ params }: ServiceDetailsPageP
                 <span>Verified CQC Partner Clinic Booking</span>
               </div>
               <Link
-                href={`/book/${service.pharmacy.slug}?serviceId=${service.id}`}
+                href={`/book/${service.pharmacy.slug}?service=${slugify(service.name)}`}
                 className="inline-flex h-11 w-full select-none items-center justify-center rounded-xl bg-blue-600 px-6 text-center text-xs font-extrabold text-white shadow-sm transition-all hover:scale-[1.01] hover:bg-blue-700 active:scale-[0.98] sm:w-auto"
               >
                 Book Appointment

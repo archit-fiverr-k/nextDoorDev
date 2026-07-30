@@ -95,6 +95,7 @@ export async function registerProviderAction(input: RegisterInput) {
           brandColor: "#10b981", // default emerald brand color
           status: "PENDING", // status defaults to PENDING for review
           isFirstLogin: true,
+          role: "pharmacy",
         },
       });
 

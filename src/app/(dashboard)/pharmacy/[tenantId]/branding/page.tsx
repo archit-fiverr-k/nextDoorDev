@@ -10,23 +10,18 @@ interface PharmacyBrandingPageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyBrandingPage({ params }: PharmacyBrandingPageProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
 
-  // Tenant Boundary Guard
-  const isTenantUser = session.user.role === "pharmacy";
-  const isPlatformAdmin =
-    session.user.role === "super_admin" || session.user.role === "platform_admin";
-
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
-    redirect("/");
-  }
-  if (!isTenantUser && !isPlatformAdmin) {
-    redirect("/");
-  }
-
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { id: params.tenantId },
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
     select: {
       id: true,
       name: true,
@@ -39,6 +34,18 @@ export default async function PharmacyBrandingPage({ params }: PharmacyBrandingP
 
   if (!pharmacy) {
     notFound();
+  }
+
+  // Tenant Boundary Guard
+  const isTenantUser = session.user.role === "pharmacy";
+  const isPlatformAdmin =
+    session.user.role === "super_admin" || session.user.role === "platform_admin";
+
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
+    redirect("/");
+  }
+  if (!isTenantUser && !isPlatformAdmin) {
+    redirect("/");
   }
 
   return (

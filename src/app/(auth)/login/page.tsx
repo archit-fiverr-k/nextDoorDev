@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { loginAction } from "@/actions/auth";
 import {
@@ -19,13 +20,34 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-export default function LoginPage() {
+function LoginFormContent() {
+  const searchParams = useSearchParams();
+  const queryError = searchParams?.get("error");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (queryError) {
+      if (
+        queryError.includes("CallbackRouteError") ||
+        queryError.includes("CredentialsSignin") ||
+        queryError.includes("Callback")
+      ) {
+        setError("Invalid email address or password. Please check your credentials and try again.");
+      } else if (queryError.includes("AccessDenied")) {
+        setError("Access denied. Your account may be pending approval or suspended.");
+      } else if (queryError.includes("SessionRequired")) {
+        setError("Please sign in to access your workspace.");
+      } else {
+        setError("Invalid credentials. Please check your details and try again.");
+      }
+    }
+  }, [queryError]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +78,7 @@ export default function LoginPage() {
               }
 
               if (role === "pharmacy") {
-                window.location.href = "/provider";
+                window.location.href = "/pharmacy";
                 return;
               }
 
@@ -354,5 +376,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-zinc-950">
+          <Loader2 className="h-6 w-6 animate-spin text-[#10B981]" />
+        </div>
+      }
+    >
+      <LoginFormContent />
+    </Suspense>
   );
 }

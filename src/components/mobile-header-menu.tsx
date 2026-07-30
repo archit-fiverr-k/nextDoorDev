@@ -32,6 +32,16 @@ export interface MobileHeaderMenuProps {
   isPharmacyUser: boolean;
   triggerMode?: "header" | "bottom" | "icon";
   renderTrigger?: (openMenu: () => void) => React.ReactNode;
+  serviceCategories?: {
+    id: string;
+    name: string;
+    slug: string;
+    masterServices: {
+      id: string;
+      name: string;
+      slug: string;
+    }[];
+  }[];
 }
 
 const pharmacyFirstConditions = [
@@ -51,6 +61,7 @@ export function MobileHeaderMenu({
   isPharmacyUser,
   triggerMode = "header",
   renderTrigger,
+  serviceCategories,
 }: MobileHeaderMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -182,27 +193,15 @@ export function MobileHeaderMenu({
                 )}
               </div>
 
-              {/* 2. Direct Search Shortcuts */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* 2. Direct Search Shortcut */}
+              <div>
                 <Link
-                  href="/providers"
+                  href="/search"
                   onClick={closeMenu}
-                  className="shadow-xs dark:border-zinc-850 flex items-center space-x-2.5 rounded-xl border border-slate-200 bg-white p-3.5 dark:bg-zinc-900"
+                  className="shadow-xs dark:border-zinc-850 flex items-center justify-center space-x-2 rounded-xl bg-[#10B981] p-3.5 text-xs font-extrabold text-white transition-all hover:bg-emerald-600"
                 >
-                  <Search className="h-4 w-4 shrink-0 text-emerald-600" />
-                  <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                    Search Clinics
-                  </span>
-                </Link>
-                <Link
-                  href="/services"
-                  onClick={closeMenu}
-                  className="shadow-xs dark:border-zinc-850 flex items-center space-x-2.5 rounded-xl border border-slate-200 bg-white p-3.5 dark:bg-zinc-900"
-                >
-                  <HeartPulse className="h-4 w-4 shrink-0 text-emerald-600" />
-                  <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                    Browse Services
-                  </span>
+                  <Search className="h-4 w-4 shrink-0 stroke-[2.5]" />
+                  <span>Search Healthcare Marketplace</span>
                 </Link>
               </div>
 
@@ -213,150 +212,78 @@ export function MobileHeaderMenu({
                 </span>
 
                 <div className="dark:divide-zinc-850 dark:border-zinc-850 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white dark:bg-zinc-900">
-                  {/* NHS Pharmacy First */}
-                  <div>
-                    <button
-                      onClick={() => toggleCategory("pharmacy-first")}
-                      className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
-                    >
-                      <span className="flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                        NHS Pharmacy First (Minor Ailments)
-                      </span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-slate-400 transition-transform ${
-                          activeCategory === "pharmacy-first" ? "rotate-180 text-emerald-600" : ""
-                        }`}
-                      />
-                    </button>
-                    {activeCategory === "pharmacy-first" && (
-                      <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
-                        {pharmacyFirstConditions.map((c) => (
-                          <Link
-                            key={c.id}
-                            href={`/services?query=${encodeURIComponent(c.label)}`}
-                            onClick={closeMenu}
-                            className="block text-xs font-medium text-slate-700 hover:text-emerald-600 dark:text-zinc-300"
-                          >
-                            • {c.label}
-                          </Link>
-                        ))}
+                  {serviceCategories && serviceCategories.length > 0 ? (
+                    serviceCategories.map((cat) => (
+                      <div key={cat.id}>
+                        <button
+                          onClick={() => toggleCategory(cat.id)}
+                          className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
+                        >
+                          <span className="flex items-center gap-2">
+                            {cat.name.toLowerCase().includes("nhs") && (
+                              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                            )}
+                            {cat.name}
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 text-slate-400 transition-transform ${
+                              activeCategory === cat.id ? "rotate-180 text-emerald-600" : ""
+                            }`}
+                          />
+                        </button>
+                        {activeCategory === cat.id && (
+                          <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
+                            {cat.masterServices.map((svc) => (
+                              <Link
+                                key={svc.id}
+                                href={`/search?service=${encodeURIComponent(svc.name)}`}
+                                onClick={closeMenu}
+                                className="block text-xs font-medium text-slate-700 hover:text-emerald-600 dark:text-zinc-300"
+                              >
+                                • {svc.name}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  {/* Men's Health */}
-                  <div>
-                    <button
-                      onClick={() => toggleCategory("mens-health")}
-                      className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
-                    >
-                      <span>Men&apos;s Health</span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-slate-400 transition-transform ${
-                          activeCategory === "mens-health" ? "rotate-180 text-emerald-600" : ""
-                        }`}
-                      />
-                    </button>
-                    {activeCategory === "mens-health" && (
-                      <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
-                        <Link
-                          href="/services?query=Hair Loss"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
+                    ))
+                  ) : (
+                    <>
+                      {/* Fallback Static Categories */}
+                      <div>
+                        <button
+                          onClick={() => toggleCategory("pharmacy-first")}
+                          className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
                         >
-                          • Hair Loss Treatment
-                        </Link>
-                        <Link
-                          href="/services?query=Erectile Dysfunction"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Erectile Dysfunction
-                        </Link>
-                        <Link
-                          href="/services?query=Premature Ejaculation"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Premature Ejaculation
-                        </Link>
+                          <span className="flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                            NHS Pharmacy First (Minor Ailments)
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 text-slate-400 transition-transform ${
+                              activeCategory === "pharmacy-first"
+                                ? "rotate-180 text-emerald-600"
+                                : ""
+                            }`}
+                          />
+                        </button>
+                        {activeCategory === "pharmacy-first" && (
+                          <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
+                            {pharmacyFirstConditions.map((c) => (
+                              <Link
+                                key={c.id}
+                                href={`/services?query=${encodeURIComponent(c.label)}`}
+                                onClick={closeMenu}
+                                className="block text-xs font-medium text-slate-700 hover:text-emerald-600 dark:text-zinc-300"
+                              >
+                                • {c.label}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  {/* Women's Health */}
-                  <div>
-                    <button
-                      onClick={() => toggleCategory("womens-health")}
-                      className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
-                    >
-                      <span>Women&apos;s Health</span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-slate-400 transition-transform ${
-                          activeCategory === "womens-health" ? "rotate-180 text-emerald-600" : ""
-                        }`}
-                      />
-                    </button>
-                    {activeCategory === "womens-health" && (
-                      <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
-                        <Link
-                          href="/services?query=Cystitis"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Cystitis / UTI Treatment
-                        </Link>
-                        <Link
-                          href="/services?query=Period Delay"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Period Delay Tablets
-                        </Link>
-                        <Link
-                          href="/services?query=Contraception"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Contraceptive Pill
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Travel Health */}
-                  <div>
-                    <button
-                      onClick={() => toggleCategory("travel-health")}
-                      className="flex w-full items-center justify-between p-4 text-left text-xs font-extrabold text-slate-900 dark:text-white"
-                    >
-                      <span>Travel Health & Vaccines</span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-slate-400 transition-transform ${
-                          activeCategory === "travel-health" ? "rotate-180 text-emerald-600" : ""
-                        }`}
-                      />
-                    </button>
-                    {activeCategory === "travel-health" && (
-                      <div className="space-y-2 bg-slate-50/60 p-4 pt-0 dark:bg-zinc-950/40">
-                        <Link
-                          href="/services?query=Yellow Fever"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Yellow Fever Vaccination
-                        </Link>
-                        <Link
-                          href="/services?query=Antimalarials"
-                          onClick={closeMenu}
-                          className="block text-xs font-medium text-slate-700 dark:text-zinc-300"
-                        >
-                          • Antimalarial Medication
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
 

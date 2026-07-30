@@ -23,6 +23,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+import { getPhoneValidationError } from "@/lib/phone-validation";
+
 export default function RegisterPatientPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -49,8 +51,9 @@ export default function RegisterPatientPage() {
   const [otpError, setOtpError] = useState(false);
 
   const handleSendOtp = () => {
-    if (!phone || phone.trim().length < 5) {
-      setError("Please supply a valid UK mobile number to send OTP.");
+    const phoneErr = getPhoneValidationError(phone);
+    if (phoneErr) {
+      setError(phoneErr);
       return;
     }
     setError(null);

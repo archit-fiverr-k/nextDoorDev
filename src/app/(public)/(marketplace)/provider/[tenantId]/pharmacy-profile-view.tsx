@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { slugify } from "@/lib/slug";
 import {
   MapPin,
   Phone,
@@ -515,7 +516,7 @@ export function PharmacyProfileView({ pharmacy, nearbyPharmacies }: PharmacyProf
 
                 <div className="mt-4 border-t border-slate-100 pt-3 dark:border-zinc-800">
                   <Link
-                    href={`/book/${pharmacy.slug}?serviceId=${svc.id}`}
+                    href={`/book/${pharmacy.slug}?service=${slugify(svc.name)}`}
                     className="shadow-xs flex w-full items-center justify-center space-x-1.5 rounded-xl bg-slate-900 py-2.5 text-xs font-extrabold text-white transition-colors hover:bg-emerald-600 active:scale-95 dark:bg-white dark:text-slate-900"
                   >
                     <CalendarCheck className="h-4 w-4" />

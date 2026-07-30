@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { slugify } from "@/lib/slug";
 import {
   Search,
   MapPin,
@@ -669,7 +670,7 @@ export function ServiceDirectoryView({
                         </button>
 
                         <Link
-                          href={`/book/${service.pharmacy.slug}?serviceId=${service.id}`}
+                          href={`/book/${service.pharmacy.slug}?service=${slugify(service.name)}`}
                           className="shadow-xs flex items-center justify-center gap-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-black text-white hover:bg-emerald-500 active:scale-95"
                         >
                           <CalendarCheck className="h-3.5 w-3.5" />
@@ -770,7 +771,7 @@ export function ServiceDirectoryView({
                     <p className="text-[10px] text-slate-400">{svc.pharmacy.address}</p>
                   </div>
                   <Link
-                    href={`/book/${svc.pharmacy.slug}?serviceId=${svc.id}`}
+                    href={`/book/${svc.pharmacy.slug}?service=${slugify(svc.name)}`}
                     className="block w-full rounded-xl bg-emerald-600 py-2 text-center text-xs font-black text-white"
                   >
                     Book This Service
@@ -838,7 +839,7 @@ export function ServiceDirectoryView({
 
             <div className="dark:border-zinc-850 border-t border-slate-100 pt-4">
               <Link
-                href={`/book/${previewService.pharmacy.slug}?serviceId=${previewService.id}`}
+                href={`/book/${previewService.pharmacy.slug}?service=${slugify(previewService.name)}`}
                 className="flex w-full items-center justify-center space-x-2 rounded-2xl bg-emerald-600 py-3.5 text-xs font-extrabold text-white shadow-md hover:bg-emerald-500"
               >
                 <CalendarCheck className="h-4 w-4" />

@@ -141,18 +141,44 @@ export default async function PublicBookingPage({ params, searchParams }: Public
     }
   }
 
-  // Resolve preselected service if passed via query params (serviceId or service slug/name)
+  // Resolve preselected service if passed via query params (service slug, name, or serviceId)
   let initialServiceId: string | undefined = undefined;
-  if (searchParams?.serviceId) {
-    const foundById = sanitizedServices.find((s) => s.id === searchParams.serviceId);
-    if (foundById) initialServiceId = foundById.id;
-  }
-  if (!initialServiceId && searchParams?.service) {
-    const sQuery = searchParams.service.toLowerCase();
-    const foundBySlug = sanitizedServices.find(
-      (s) => slugify(s.name) === sQuery || s.name.toLowerCase().includes(sQuery)
-    );
-    if (foundBySlug) initialServiceId = foundBySlug.id;
+  let unofferedServiceQuery: string | undefined = undefined;
+  const paramVal = (searchParams?.service || searchParams?.serviceId || "").toLowerCase().trim();
+
+  if (paramVal) {
+    const foundService = sanitizedServices.find((s) => {
+      if (s.id.toLowerCase() === paramVal) return true;
+
+      const sSlug = slugify(s.name);
+      if (sSlug === paramVal || sSlug.includes(paramVal) || paramVal.includes(sSlug)) return true;
+
+      const cleanParam = paramVal.replace(/-/g, " ").toLowerCase();
+      const sNameClean = s.name.toLowerCase();
+
+      if (sNameClean.includes(cleanParam) || cleanParam.includes(sNameClean)) return true;
+
+      // Typo & Synonym tolerant token match (e.g. disfunction vs dysfunction, ed, erectile)
+      const normalizedParam = cleanParam.replace(/disfunction/g, "dysfunction");
+      const normalizedSName = sNameClean.replace(/disfunction/g, "dysfunction");
+
+      const paramTokens = normalizedParam
+        .split(/\s+/)
+        .filter(
+          (t) =>
+            t.length >= 2 && !["service", "treatment", "private", "clinic", "check"].includes(t)
+        );
+
+      if (paramTokens.length === 0) return false;
+
+      return paramTokens.some((pt) => normalizedSName.includes(pt));
+    });
+
+    if (foundService) {
+      initialServiceId = foundService.id;
+    } else {
+      unofferedServiceQuery = searchParams?.service || searchParams?.serviceId;
+    }
   }
 
   return (
@@ -162,6 +188,7 @@ export default async function PublicBookingPage({ params, searchParams }: Public
       categories={sanitizedCategories}
       currentUser={currentUser}
       initialServiceId={initialServiceId}
+      unofferedServiceQuery={unofferedServiceQuery}
     />
   );
 }

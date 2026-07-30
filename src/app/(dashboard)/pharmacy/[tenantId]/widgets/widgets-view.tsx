@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { slugify } from "@/lib/slug";
 import {
   Copy,
   Check,
@@ -754,7 +755,7 @@ export function WidgetsView({ pharmacy, services, bookingUrl }: WidgetsViewProps
                 ) : (
                   <div className="max-h-[350px] divide-y divide-slate-100 overflow-y-auto dark:divide-zinc-900">
                     {filteredServices.map((service) => {
-                      const directUrl = `${bookingUrl}?serviceId=${service.id}`;
+                      const directUrl = `${bookingUrl}?service=${slugify(service.name)}`;
                       const isCopied = copiedStates[service.id];
                       return (
                         <div

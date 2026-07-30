@@ -98,10 +98,15 @@ export function ProvidersDirectoryView({
         // Location search
         if (locationQuery) {
           const loc = locationQuery.toLowerCase();
+          const locNoSpace = loc.replace(/\s+/g, "");
           const matchAddr = p.address.toLowerCase().includes(loc);
           const matchCity = (p.city || "").toLowerCase().includes(loc);
           const matchPostcode = (p.postcode || "").toLowerCase().includes(loc);
-          if (!matchAddr && !matchCity && !matchPostcode) return false;
+          const matchPostcodeNoSpace = (p.postcode || "")
+            .replace(/\s+/g, "")
+            .toLowerCase()
+            .includes(locNoSpace);
+          if (!matchAddr && !matchCity && !matchPostcode && !matchPostcodeNoSpace) return false;
         }
 
         // Type filter

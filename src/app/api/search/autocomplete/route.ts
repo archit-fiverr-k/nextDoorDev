@@ -102,14 +102,23 @@ const serviceSynonyms: Record<string, string[]> = {
   blood: ["screening", "health", "assessment", "test"],
   test: ["screening", "health", "assessment"],
   check: ["screening", "health", "assessment", "check"],
-  ear: ["wax", "removal"],
-  weight: ["management", "loss"],
-  travel: ["vaccination", "vaccine", "yellow fever", "typhoid", "rabies"],
+  ear: ["wax", "removal", "microsuction"],
+  weight: ["management", "loss", "wegovy", "mounjaro", "semaglutide", "tirzepatide"],
+  travel: ["vaccination", "vaccine", "yellow fever", "typhoid", "rabies", "hajj"],
   holiday: ["travel", "vaccination", "clinic"],
   yellow: ["fever", "travel", "vaccination"],
   flu: ["vaccination", "influenza", "booster"],
   covid: ["booster", "vaccination"],
   bp: ["blood", "pressure", "check"],
+  erectile: ["erectile", "dysfunction", "ed", "viagra", "sildenafil", "tadalafil", "men"],
+  dysfunction: ["erectile", "dysfunction", "ed", "men"],
+  ed: ["erectile", "dysfunction", "viagra", "sildenafil"],
+  viagra: ["erectile", "dysfunction", "sildenafil"],
+  sildenafil: ["erectile", "dysfunction", "viagra"],
+  tadalafil: ["erectile", "dysfunction", "cialis"],
+  hair: ["hair", "loss", "finasteride", "propecia"],
+  period: ["delay", "norethisterone", "menstruation"],
+  uti: ["urinary", "tract", "infection", "cystitis"],
 };
 
 export async function GET(req: NextRequest) {
@@ -154,6 +163,7 @@ export async function GET(req: NextRequest) {
         analyticsPopular.length > 0
           ? analyticsPopular.map((a: any) => a.query)
           : [
+              "Erectile Dysfunction Treatment",
               "Travel Vaccination",
               "Blood Tests",
               "Ear Wax Removal",
@@ -179,43 +189,71 @@ export async function GET(req: NextRequest) {
 
     let serviceSuggestions: any[] = [];
     if (type === "service" || type === "all") {
-      const queryTerms = [cleanQuery];
+      const rawTerms = [cleanQuery];
       for (const [key, synonyms] of Object.entries(serviceSynonyms)) {
-        if (cleanQuery.includes(key)) {
+        if (
+          cleanQuery === key ||
+          (cleanQuery.length >= 3 && (cleanQuery.includes(key) || key.includes(cleanQuery)))
+        ) {
           for (const syn of synonyms) {
-            if (!queryTerms.includes(syn)) {
-              queryTerms.push(syn);
+            if (!rawTerms.includes(syn) && syn.length >= 3) {
+              rawTerms.push(syn);
             }
           }
         }
       }
+      const queryTerms = rawTerms.filter((t) => t.length >= 3 || t === cleanQuery);
 
-      const services = await db.service.findMany({
-        where: {
-          isActive: true,
-          OR: queryTerms.map((term) => ({
-            name: {
-              contains: term,
-              mode: "insensitive",
-            },
-          })),
-        },
-        select: {
-          name: true,
-        },
-        distinct: ["name"],
-        take: 5,
-      });
+      // Search both masterService catalog AND pharmacy active services concurrently!
+      const [masterServices, pharmacyServices] = await Promise.all([
+        db.masterService.findMany({
+          where: {
+            OR: queryTerms.map((term) => ({
+              name: {
+                contains: term,
+                mode: "insensitive",
+              },
+            })),
+          },
+          select: {
+            name: true,
+            category: { select: { name: true } },
+          },
+          take: 8,
+        }),
+        db.service.findMany({
+          where: {
+            isActive: true,
+            OR: queryTerms.map((term) => ({
+              name: {
+                contains: term,
+                mode: "insensitive",
+              },
+            })),
+          },
+          select: {
+            name: true,
+            category: true,
+          },
+          distinct: ["name"],
+          take: 8,
+        }),
+      ]);
 
-      for (const svc of services) {
-        // Find how many approved pharmacies offer this service
+      const seenNames = new Set<string>();
+
+      // First add matching Master Services (complete catalogue)
+      for (const mSvc of masterServices) {
+        if (seenNames.has(mSvc.name.toLowerCase())) continue;
+        seenNames.add(mSvc.name.toLowerCase());
+
         const count = await db.pharmacy.count({
           where: {
             status: "APPROVED",
             deletedAt: null,
             services: {
               some: {
-                name: svc.name,
+                name: { contains: mSvc.name, mode: "insensitive" },
                 isActive: true,
               },
             },
@@ -224,13 +262,41 @@ export async function GET(req: NextRequest) {
 
         serviceSuggestions.push({
           type: "service",
-          name: svc.name,
+          name: mSvc.name,
+          category: mSvc.category?.name || "Men's Health Services",
           count,
           status: count > 0 ? "green" : "grey",
           statusText:
-            count > 0
-              ? `${count} clinic${count > 1 ? "s" : ""} available`
-              : "No registered clinics",
+            count > 0 ? `${count} clinic${count > 1 ? "s" : ""} available` : "Available on request",
+        });
+      }
+
+      // Next add any additional pharmacy specific services
+      for (const pSvc of pharmacyServices) {
+        if (seenNames.has(pSvc.name.toLowerCase())) continue;
+        seenNames.add(pSvc.name.toLowerCase());
+
+        const count = await db.pharmacy.count({
+          where: {
+            status: "APPROVED",
+            deletedAt: null,
+            services: {
+              some: {
+                name: pSvc.name,
+                isActive: true,
+              },
+            },
+          },
+        });
+
+        serviceSuggestions.push({
+          type: "service",
+          name: pSvc.name,
+          category: pSvc.category || "Clinical Service",
+          count,
+          status: count > 0 ? "green" : "grey",
+          statusText:
+            count > 0 ? `${count} clinic${count > 1 ? "s" : ""} available` : "Available on request",
         });
       }
     }

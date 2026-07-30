@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { notFound } from "next/navigation";
 import PatientsClient from "./patients-client";
 
 export const revalidate = 0;
@@ -9,8 +10,24 @@ interface PatientsPageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PatientsPage({ params }: PatientsPageProps) {
-  const pharmacyId = params.tenantId;
+  const isParamUuid = isUuid(params.tenantId);
+
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
+  });
+
+  if (!pharmacy) {
+    notFound();
+  }
+
+  const pharmacyId = pharmacy.id;
 
   // Fetch patients with appointments & crm notes
   const patients = await db.customer.findMany({
@@ -42,5 +59,10 @@ export default async function PatientsPage({ params }: PatientsPageProps) {
     },
   });
 
-  return <PatientsClient pharmacyId={pharmacyId} initialPatients={patients} />;
+  return (
+    <PatientsClient
+      pharmacyId={pharmacyId}
+      initialPatients={JSON.parse(JSON.stringify(patients))}
+    />
+  );
 }

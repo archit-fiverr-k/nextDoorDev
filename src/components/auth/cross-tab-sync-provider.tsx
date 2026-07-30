@@ -10,8 +10,8 @@ export function CrossTabSyncProvider({ children }: { children: React.ReactNode }
 
     channel.onmessage = (event) => {
       if (event.data?.type === "LOGOUT") {
-        console.log("⚡ Cross-tab logout received. Redirecting to login...");
-        window.location.href = "/login?reason=tab_logout";
+        console.log("⚡ Cross-tab logout received. Redirecting to landing page...");
+        window.location.href = "/";
       }
     };
 

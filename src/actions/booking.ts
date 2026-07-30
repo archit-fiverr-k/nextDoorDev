@@ -15,12 +15,17 @@ import { hashPassword, verifyPassword } from "@/lib/crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { localDateTimeToUTC } from "@/lib/timezone";
 import { sendVerifyOtp, checkVerifyOtp, sendSMS, sendWhatsapp } from "@/lib/twilio";
+import { isValidUKOrDevPhone } from "@/lib/phone-validation";
+
+import { sendEmail } from "@/lib/email";
 
 async function sendAllBookingNotifications(params: {
   patientName: string;
   patientEmail: string;
   patientPhone: string;
   pharmacyName: string;
+  pharmacyEmail?: string;
+  pharmacySlug?: string;
   serviceName: string;
   startTime: Date;
   referenceCode: string;
@@ -31,13 +36,23 @@ async function sendAllBookingNotifications(params: {
     patientEmail,
     patientPhone,
     pharmacyName,
+    pharmacyEmail,
+    pharmacySlug,
     serviceName,
     startTime,
     referenceCode,
     manageUrl,
   } = params;
 
-  // 1. Send Email Notification
+  const formattedSlotTime = new Date(startTime).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // 1. Send Email Notification to Patient
   try {
     await sendBookingConfirmationEmail(patientEmail, {
       patientName,
@@ -46,27 +61,71 @@ async function sendAllBookingNotifications(params: {
       startTime,
       bookingId: referenceCode,
     });
-    console.log(`✅ [Email Dispatch] Sent confirmation to ${patientEmail}`);
+    console.log(`✅ [Email Dispatch] Sent booking reservation email to patient ${patientEmail}`);
   } catch (emailErr) {
     console.warn("⚠️ Failed to send confirmation email:", emailErr);
   }
 
-  // 2. Send SMS Notification
+  // 2. Send Booking Reservation SMS to Patient
   try {
-    const smsBody = `Hi ${patientName}, your NextDoorClinic appointment for ${serviceName} at ${pharmacyName} is confirmed (Ref: ${referenceCode}). View details: ${manageUrl}`;
+    const smsBody = `Your appointment reservation for ${serviceName} at ${pharmacyName} (${formattedSlotTime}) has been received. Booking Ref: ${referenceCode}. Status: Awaiting Pharmacy Approval.`;
     await sendSMS({ to: patientPhone, body: smsBody });
-    console.log(`✅ [SMS Dispatch] Sent SMS confirmation to ${patientPhone}`);
+    console.log(`✅ [SMS Dispatch] Sent reservation SMS to patient ${patientPhone}`);
   } catch (smsErr) {
     console.warn("⚠️ Failed to send confirmation SMS:", smsErr);
   }
 
-  // 3. Send WhatsApp Notification
+  // 3. Send WhatsApp Notification to Patient
   try {
-    const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment booking at *${pharmacyName}* has been confirmed!\n\n📋 *Treatment:* ${serviceName}\n📅 *Booking Ref:* ${referenceCode}\n📍 *Clinic:* ${pharmacyName}\n\nManage or view your appointment details here:\n${manageUrl}\n\nThank you for choosing NextDoorClinic!`;
+    const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment reservation at *${pharmacyName}* has been received!\n\n📋 *Treatment:* ${serviceName}\n📅 *Slot:* ${formattedSlotTime}\n🔖 *Booking Ref:* ${referenceCode}\n\nStatus: *Awaiting Pharmacy Approval*\n\nView details: ${manageUrl}`;
     await sendWhatsapp({ to: patientPhone, body: whatsappBody });
-    console.log(`✅ [WhatsApp Dispatch] Sent WhatsApp confirmation to ${patientPhone}`);
+    console.log(`✅ [WhatsApp Dispatch] Sent reservation WhatsApp to ${patientPhone}`);
   } catch (waErr) {
     console.warn("⚠️ Failed to send confirmation WhatsApp:", waErr);
+  }
+
+  // 4. Send New Booking Awaiting Email to Pharmacy Owner
+  if (pharmacyEmail) {
+    try {
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const portalUrl = `${appBaseUrl}/pharmacy/${pharmacySlug || "dashboard"}/appointments`;
+      const subject = `[ACTION REQUIRED] New Booking Request Awaiting Approval - ${serviceName} (${patientName})`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px;">
+            <div style="background: #0f766e; padding: 16px; border-radius: 8px; color: white; text-align: center;">
+              <h2 style="margin: 0; font-size: 18px;">🔔 New Booking Request Awaiting Approval</h2>
+              <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">${pharmacyName}</p>
+            </div>
+            
+            <p style="margin-top: 20px; font-size: 14px;">Hello <strong>${pharmacyName} Team</strong>,</p>
+            <p style="font-size: 13px;">A new appointment request has been submitted by a patient and is awaiting your review and confirmation.</p>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; background: #f1f5f9; border-radius: 8px; padding: 12px;">
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Patient:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientName}</td></tr>
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Service:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f766e;">${serviceName}</td></tr>
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Slot:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${formattedSlotTime}</td></tr>
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Reference:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${referenceCode}</td></tr>
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Phone:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientPhone}</td></tr>
+              <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Email:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientEmail}</td></tr>
+            </table>
+
+            <div style="text-align: center; margin-top: 24px;">
+              <a href="${portalUrl}" style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">
+                Review & Accept Booking in Portal &rarr;
+              </a>
+            </div>
+          </div>
+        </div>
+      `;
+
+      await sendEmail({ to: pharmacyEmail, subject, html });
+      console.log(
+        `✅ [Email Dispatch] Sent awaiting booking email to pharmacy owner ${pharmacyEmail}`
+      );
+    } catch (pharmErr) {
+      console.warn("⚠️ Failed to send awaiting booking email to pharmacy owner:", pharmErr);
+    }
   }
 }
 
@@ -194,8 +253,11 @@ export async function sendBookingOtpAction(mobile: string, email?: string) {
   }
 
   const cleanPhone = mobile.trim();
-  if (!cleanPhone || cleanPhone.replace(/\D/g, "").length < 8) {
-    return { success: false, error: "Please enter a valid mobile number." };
+  if (!isValidUKOrDevPhone(cleanPhone)) {
+    return {
+      success: false,
+      error: "Only UK mobile numbers (+44 / 07...) are supported.",
+    };
   }
 
   try {
@@ -433,7 +495,7 @@ export async function verifyOtpAndCompleteBookingAction(data: {
             serviceId: svc.id,
             startTime: currentStart,
             endTime: svcEnd,
-            status: "CONFIRMED",
+            status: "PENDING",
             notes: data.notes,
           },
         });
@@ -447,8 +509,8 @@ export async function verifyOtpAndCompleteBookingAction(data: {
         data: {
           customerId: customer.id,
           type: "BOOKING_CONFIRMED",
-          title: "Booking Confirmed",
-          message: `Your appointment for ${services.map((s) => s.name).join(", ")} at ${pharmacy.name} is confirmed!`,
+          title: "Booking Request Submitted",
+          message: `Your appointment request for ${services.map((s) => s.name).join(", ")} at ${pharmacy.name} has been submitted and is awaiting pharmacy approval.`,
           link: `/patient/appointments/${firstAppt.id}`,
         },
       });
@@ -743,15 +805,16 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
     });
 
     const referenceCode = `NDC-${transactionResult.appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
-    const manageToken = await generateManageToken(transactionResult.appointment.id, data.email);
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const manageUrl = `${appBaseUrl}/manage-booking/${manageToken}`;
+    const manageUrl = `${appBaseUrl}/b/${referenceCode}`;
 
     await sendAllBookingNotifications({
       patientName: `${data.firstName} ${data.lastName}`,
       patientEmail: data.email,
       patientPhone: data.mobile,
       pharmacyName: pharmacy.name,
+      pharmacyEmail: pharmacy.email,
+      pharmacySlug: pharmacy.slug,
       serviceName: services.map((s) => s.name).join(", "),
       startTime: startTimeUTC,
       referenceCode,
@@ -762,7 +825,7 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
       success: true,
       appointmentId: transactionResult.appointment.id,
       referenceCode,
-      manageToken,
+      manageToken: referenceCode,
       manageUrl,
       patientEmail: data.email,
       newAccountCreated: transactionResult.isNewAccount,

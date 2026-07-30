@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import { getRequiredSession } from "@/lib/session";
 import { ProfileForm } from "./profile-form";
-import { H1, P } from "@/components/ui/typography";
 
 interface PharmacyProfilePageProps {
   params: {
@@ -10,29 +9,33 @@ interface PharmacyProfilePageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyProfilePage({ params }: PharmacyProfilePageProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
 
-  // Tenant Boundary Isolation Guard
-  const isTenantUser = session.user.role === "pharmacy";
-  const isPlatformAdmin =
-    session.user.role === "super_admin" || session.user.role === "platform_admin";
-
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
-    redirect("/");
-  }
-  if (!isTenantUser && !isPlatformAdmin) {
-    redirect("/");
-  }
-
-  const pharmacy = await db.pharmacy.findUnique({
-    where: { id: params.tenantId },
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
     include: {
       availability: {
         orderBy: { dayOfWeek: "asc" },
       },
       services: {
         where: { isActive: true },
+      },
+      reviews: {
+        include: {
+          customer: true,
+          service: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
       },
     },
   });
@@ -41,17 +44,21 @@ export default async function PharmacyProfilePage({ params }: PharmacyProfilePag
     notFound();
   }
 
+  // Tenant Boundary Isolation Guard
+  const isTenantUser = session.user.role === "pharmacy";
+  const isPlatformAdmin =
+    session.user.role === "super_admin" || session.user.role === "platform_admin";
+
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
+    redirect("/");
+  }
+  if (!isTenantUser && !isPlatformAdmin) {
+    redirect("/");
+  }
+
   return (
     <div className="select-text space-y-6">
-      <div>
-        <H1>Clinic Profile & Settings</H1>
-        <P className="mt-1">
-          Customize your clinical directory listing, brand styling, contact cards, opening hours,
-          and whitelabeled booking pages.
-        </P>
-      </div>
-
-      <ProfileForm pharmacy={pharmacy} />
+      <ProfileForm pharmacy={JSON.parse(JSON.stringify(pharmacy))} />
     </div>
   );
 }

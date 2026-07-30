@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { slugify } from "@/lib/slug";
 import {
   SlidersHorizontal,
   Star,
@@ -11,8 +12,6 @@ import {
   Phone,
   ArrowRight,
   Check,
-  Map as MapIcon,
-  List as ListIcon,
   Tag,
   AlertCircle,
   Mail,
@@ -23,16 +22,16 @@ import {
   Navigation,
   CalendarCheck,
   X,
+  Stethoscope,
+  Search,
+  Sparkles,
+  ExternalLink,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SearchBar } from "../search-bar";
 import { getDistanceMiles, geocodeLocation } from "@/lib/geocoding";
-import { slugify } from "@/lib/slug";
-import {
-  logSearchQueryAction,
-  createCallbackRequestAction,
-  createWaitlistNotificationAction,
-} from "@/actions/search-analytics";
 
 interface ServiceItem {
   id: string;
@@ -41,6 +40,7 @@ interface ServiceItem {
   duration: number;
   price: number;
   isActive: boolean;
+  category?: string | null;
 }
 
 interface PharmacyData {
@@ -60,7 +60,6 @@ interface PharmacyData {
   isOpenToday: boolean;
   slotsToday: number;
   earliestAppointment?: string;
-  earliestAppointmentDate?: Date | null;
   ratingScore: number;
   ratingCount: number;
 }
@@ -71,103 +70,8 @@ interface SearchViewProps {
   initialLng: number | null;
   initialService: string;
   initialProviders: PharmacyData[];
-  categories: { id: string; name: string }[];
-  allServiceNames: string[];
-}
-
-function levenshteinDistance(a: string, b: string): number {
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-
-  const matrix: number[][] = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
-
-const SYNONYMS_MAP: Record<string, string[]> = {
-  vaccine: [
-    "vacine",
-    "vaccin",
-    "vacination",
-    "vaccination",
-    "vax",
-    "shot",
-    "jab",
-    "booster",
-    "immunisation",
-    "immunization",
-  ],
-  flu: ["fluu", "flue", "influenza", "winter", "booster"],
-  blood: [
-    "blod",
-    "bld",
-    "phlebotomy",
-    "biomarker",
-    "screening",
-    "screen",
-    "lab",
-    "cholesterol",
-    "lipid",
-    "thyroid",
-  ],
-  ear: ["earwax", "earcare", "microsuction", "syringing", "hearing", "wax", "clearance"],
-  travel: ["travle", "traveller", "abroad", "yellow", "fever", "malaria", "typhoid", "rabies"],
-  pressure: ["bp", "cardio", "hypertension", "heart", "cardiovascular"],
-  weight: ["weght", "management", "loss", "slimming", "ozempic", "mounjaro", "saxenda", "wegovy"],
-  london: ["londn", "lond", "central london", "westminster", "camden"],
-  manchester: ["manchster", "manc", "salford"],
-  leeds: ["leed", "briggate", "west yorkshire"],
-  birmingham: ["birminghm", "bullring", "midlands"],
-  bristol: ["bristl", "clifton"],
-};
-
-function isFuzzyMatch(targetText: string, queryText: string): boolean {
-  if (!queryText || !queryText.trim()) return true;
-  const target = targetText.toLowerCase().trim();
-  const query = queryText.toLowerCase().trim();
-
-  // 1. Direct substring check
-  if (target.includes(query) || query.includes(target)) return true;
-
-  // 2. Tokenized check
-  const queryTokens = query.split(/\s+/).filter(Boolean);
-  const targetTokens = target.split(/[\s,.\-\/]+/).filter(Boolean);
-
-  return queryTokens.every((qToken) => {
-    if (targetTokens.some((tToken) => tToken.includes(qToken) || qToken.includes(tToken))) {
-      return true;
-    }
-
-    for (const [key, synonyms] of Object.entries(SYNONYMS_MAP)) {
-      const isQueryKeyOrSyn = qToken === key || synonyms.includes(qToken);
-      if (isQueryKeyOrSyn) {
-        if (target.includes(key) || synonyms.some((syn) => target.includes(syn))) {
-          return true;
-        }
-      }
-    }
-
-    return targetTokens.some((tToken) => {
-      if (Math.abs(tToken.length - qToken.length) > 3) return false;
-      const maxDist = qToken.length <= 4 ? 1 : qToken.length <= 7 ? 2 : 3;
-      return levenshteinDistance(qToken, tToken) <= maxDist;
-    });
-  });
+  categories?: { id: string; name: string }[];
+  allServiceNames?: string[];
 }
 
 export function SearchView({
@@ -176,1103 +80,528 @@ export function SearchView({
   initialLng,
   initialService,
   initialProviders,
-  categories,
-  allServiceNames,
 }: SearchViewProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Active search query states
-  const [locationFilter, setLocationFilter] = useState<string>(initialLocation || "");
-  const [serviceFilter, setServiceFilter] = useState<string>(initialService || "");
-
-  // Coordinates of search center
-  const [centerCoords, setCenterCoords] = useState<{ lat: number; lng: number } | null>(
-    initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
+  // 1. INDEPENDENT SEARCH FILTERS STATE
+  const [searchLocation, setSearchLocation] = useState<string>(
+    searchParams?.get("postcode") || searchParams?.get("location") || initialLocation || ""
   );
+  const [searchService, setSearchService] = useState<string>(
+    searchParams?.get("service") || initialService || ""
+  );
+  const [maxDistance, setMaxDistance] = useState<number>(
+    parseInt(searchParams?.get("radius") || "10", 10)
+  );
+  const [sortBy, setSortBy] = useState<string>(searchParams?.get("sort") || "nearest");
+  const [openTodayOnly, setOpenTodayOnly] = useState<boolean>(
+    searchParams?.get("availability") === "open-now" || searchParams?.get("openNow") === "true"
+  );
+  const [nhsOnly, setNhsOnly] = useState<boolean>(searchParams?.get("nhs") === "true");
+  const [privateOnly, setPrivateOnly] = useState<boolean>(searchParams?.get("private") === "true");
 
-  // View state: list vs map
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  // Dynamic Provider List & Loading States
+  const [providers, setProviders] = useState<PharmacyData[]>(initialProviders);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState<boolean>(false);
 
-  // Highlighted provider from map marker click
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  // Scroll Detection for Sticky Bar
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
 
-  // Mobile filter drawer state
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-
-  // Filter states
-  const [distanceFilter, setDistanceFilter] = useState<string>("25");
-  const [openTodayFilter, setOpenTodayFilter] = useState<boolean>(false);
-  const [availableTodayFilter, setAvailableTodayFilter] = useState<boolean>(false);
-  const [ratingFilter, setRatingFilter] = useState<string>("");
-  const [maxPrice, setMaxPrice] = useState<string>("");
-
-  // Sort state
-  const [sortBy, setSortBy] = useState<string>("distance");
-
-  // Geocoding maps loader state
-  const [mapsLoaded, setMapsLoaded] = useState(false);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const googleMapInstance = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-
-  // Fallback states
-  const [callbackName, setCallbackName] = useState("");
-  const [callbackPhone, setCallbackPhone] = useState("");
-  const [callbackEmail, setCallbackEmail] = useState("");
-  const [callbackNotes, setCallbackNotes] = useState("");
-  const [callbackSuccess, setCallbackSuccess] = useState(false);
-  const [callbackLoading, setCallbackLoading] = useState(false);
-
-  const [waitlistEmail, setWaitlistEmail] = useState("");
-  const [waitlistSuccess, setWaitlistSuccess] = useState(false);
-  const [waitlistLoading, setWaitlistLoading] = useState(false);
-
-  // Parse address parts client-side for dynamic display
-  const getCity = (address: string) => {
-    const parts = address.split(",");
-    return parts.length > 1 ? parts[parts.length - 2].trim() : "UK";
-  };
-
-  // 1. Process client-side filtering and sorting with fuzzy typo tolerance
-  const processedProviders = React.useMemo(() => {
-    let result = initialProviders.map((p) => {
-      let distance = 9999;
-      if (centerCoords && p.latitude && p.longitude) {
-        distance = getDistanceMiles(centerCoords.lat, centerCoords.lng, p.latitude, p.longitude);
-      }
-      return { ...p, distance };
-    });
-
-    // Location text and distance radius filtering
-    const locQuery = (locationFilter || "").trim();
-    if (locQuery) {
-      result = result.filter((p) => {
-        if (centerCoords && p.distance !== 9999) {
-          const radius = distanceFilter !== "anywhere" ? parseFloat(distanceFilter) : 100;
-          if (p.distance <= radius) return true;
-        }
-        const fullLocationText = `${p.name} ${p.displayName || ""} ${p.address} ${p.city || ""} ${p.postcode || ""}`;
-        return isFuzzyMatch(fullLocationText, locQuery);
-      });
-    } else if (distanceFilter !== "anywhere" && centerCoords) {
-      const radius = parseFloat(distanceFilter);
-      result = result.filter((p) => p.distance <= radius);
-    }
-
-    // Service query with fuzzy typo-tolerant matching
-    if (serviceFilter && serviceFilter.trim()) {
-      result = result.filter((p) =>
-        p.services.some((s) => {
-          const fullServiceText = `${s.name} ${s.description || ""}`;
-          return isFuzzyMatch(fullServiceText, serviceFilter);
-        })
-      );
-    }
-
-    if (openTodayFilter) {
-      result = result.filter((p) => p.isOpenToday);
-    }
-
-    if (availableTodayFilter) {
-      result = result.filter((p) => p.slotsToday > 0);
-    }
-
-    if (ratingFilter) {
-      const minRating = parseFloat(ratingFilter);
-      result = result.filter((p) => p.ratingScore >= minRating);
-    }
-
-    if (maxPrice) {
-      const limit = parseFloat(maxPrice);
-      result = result.filter((p) => p.services.some((s) => s.price <= limit));
-    }
-
-    // Apply sorting
-    result.sort((a, b) => {
-      if (sortBy === "distance") {
-        if (a.distance !== 9999 && b.distance !== 9999) {
-          return a.distance - b.distance;
-        }
-      }
-      if (sortBy === "rating") return b.ratingScore - a.ratingScore;
-      if (sortBy === "earliest") {
-        if (!a.earliestAppointmentDate) return 1;
-        if (!b.earliestAppointmentDate) return -1;
-        return a.earliestAppointmentDate.getTime() - b.earliestAppointmentDate.getTime();
-      }
-      if (sortBy === "popular") return b.ratingCount - a.ratingCount;
-      return 0;
-    });
-
-    return result;
-  }, [
-    initialProviders,
-    locationFilter,
-    centerCoords,
-    distanceFilter,
-    serviceFilter,
-    openTodayFilter,
-    availableTodayFilter,
-    ratingFilter,
-    maxPrice,
-    sortBy,
-  ]);
-
-  // Reset all filters helper
-  const handleResetFilters = () => {
-    setLocationFilter("");
-    setDistanceFilter("25");
-    setServiceFilter("");
-    setOpenTodayFilter(false);
-    setAvailableTodayFilter(false);
-    setRatingFilter("");
-    setMaxPrice("");
-    setSortBy("distance");
-    router.push("/search", { scroll: false });
-  };
-
-  // Log search queries to analytics DB
   useEffect(() => {
-    const sessionToken = sessionStorage.getItem("ndc_search_session") || crypto.randomUUID();
-    sessionStorage.setItem("ndc_search_session", sessionToken);
-
-    const startTime = Date.now();
-    const timer = setTimeout(() => {
-      const duration = Date.now() - startTime;
-      const detectedType = centerCoords ? "GEOLOCATED" : "TEXT";
-      logSearchQueryAction(
-        locationFilter || "General Search",
-        detectedType,
-        processedProviders.length,
-        duration,
-        sessionToken
-      );
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [locationFilter, centerCoords, processedProviders.length]);
-
-  const handleLocationSearch = (
-    locName: string,
-    svcName?: string,
-    coords?: { lat: number; lng: number }
-  ) => {
-    const newLoc = locName || "";
-    const newSvc = svcName !== undefined ? svcName : serviceFilter;
-
-    setLocationFilter(newLoc);
-    setServiceFilter(newSvc);
-
-    if (coords) {
-      setCenterCoords(coords);
-    } else if (newLoc && newLoc.toLowerCase() !== "current location") {
-      const geocoded = geocodeLocation(newLoc);
-      if (geocoded) {
-        setCenterCoords({ lat: geocoded.lat, lng: geocoded.lng });
-      } else {
-        setCenterCoords(null);
-      }
-    } else {
-      setCenterCoords(null);
-    }
-
-    const queryParams = new URLSearchParams();
-    if (newLoc) queryParams.set("location", newLoc);
-    if (newSvc) queryParams.set("service", newSvc);
-    if (coords) {
-      queryParams.set("lat", coords.lat.toString());
-      queryParams.set("lng", coords.lng.toString());
-    }
-
-    const newUrl = `/search${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
-    router.push(newUrl, { scroll: false });
-  };
-
-  const handleCallbackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCallbackLoading(true);
-    const res = await createCallbackRequestAction(
-      callbackName,
-      callbackPhone,
-      callbackEmail,
-      initialLocation || "London",
-      null,
-      callbackNotes
-    );
-    setCallbackLoading(false);
-    if (res.success) {
-      setCallbackSuccess(true);
-      setCallbackName("");
-      setCallbackPhone("");
-      setCallbackEmail("");
-      setCallbackNotes("");
-    }
-  };
-
-  const handleWaitlistSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setWaitlistLoading(true);
-    const res = await createWaitlistNotificationAction(
-      waitlistEmail,
-      initialLocation || "London",
-      parseInt(distanceFilter) || 10,
-      null
-    );
-    setWaitlistLoading(false);
-    if (res.success) {
-      setWaitlistSuccess(true);
-      setWaitlistEmail("");
-    }
-  };
-
-  // Google Maps scripts injection loader
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const loadMapScript = () => {
-      if ((window as any).google && (window as any).google.maps) {
-        setMapsLoaded(true);
-        return;
-      }
-
-      const existingScript = document.getElementById("google-maps-script");
-      if (existingScript) return;
-
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-      const script = document.createElement("script");
-      script.id = "google-maps-script";
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => setMapsLoaded(true);
-      document.head.appendChild(script);
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 200);
     };
-
-    loadMapScript();
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Google Maps markers update loop
-  useEffect(() => {
-    if (!mapsLoaded || !mapRef.current || typeof window === "undefined") return;
-    const google = (window as any).google;
-    if (!google) return;
+  // 2. BI-DIRECTIONAL URL SYNC
+  const updateUrlParams = useCallback(
+    (newLoc: string, newSvc: string, newRad: number, newSort: string) => {
+      const params = new URLSearchParams();
+      if (newSvc.trim()) params.set("service", slugify(newSvc.trim()));
+      if (newLoc.trim()) params.set("postcode", newLoc.trim().toUpperCase());
+      if (newRad) params.set("radius", newRad.toString());
+      if (newSort && newSort !== "nearest") params.set("sort", newSort);
+      if (openTodayOnly) params.set("openNow", "true");
+      if (nhsOnly) params.set("nhs", "true");
+      if (privateOnly) params.set("private", "true");
 
-    const mapCenter = centerCoords || { lat: 51.5074, lng: -0.1278 };
+      const newUrl = `/search?${params.toString()}`;
+      window.history.replaceState(null, "", newUrl);
+    },
+    [openTodayOnly, nhsOnly, privateOnly]
+  );
 
-    if (!googleMapInstance.current) {
-      googleMapInstance.current = new google.maps.Map(mapRef.current, {
-        center: mapCenter,
-        zoom: 12,
-        mapId: "NDC_SEARCH_MAP",
-        disableDefaultUI: false,
-        zoomControl: true,
-      });
-    } else {
-      googleMapInstance.current.setCenter(mapCenter);
-    }
+  // 3. FETCH REFRESH FROM API WHEN FILTERS CHANGE
+  const executeApiSearch = useCallback(
+    async (loc: string, svc: string, rad: number, sort: string) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (svc.trim()) params.set("service", svc.trim());
+        if (loc.trim()) params.set("postcode", loc.trim());
+        params.set("radius", rad.toString());
+        params.set("sort", sort);
+        if (openTodayOnly) params.set("openNow", "true");
+        if (nhsOnly) params.set("nhs", "true");
+        if (privateOnly) params.set("private", "true");
 
-    markersRef.current.forEach((marker) => {
-      if (marker.setMap) marker.setMap(null);
-      else marker.map = null;
-    });
-    markersRef.current = [];
-
-    const createMarker = (
-      position: { lat: number; lng: number },
-      title: string,
-      iconUrl: string
-    ) => {
-      if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
-        const pinImg = document.createElement("img");
-        pinImg.src = iconUrl;
-        pinImg.style.width = "32px";
-        pinImg.style.height = "32px";
-        return new google.maps.marker.AdvancedMarkerElement({
-          position,
-          map: googleMapInstance.current,
-          title,
-          content: pinImg,
-        });
-      }
-      return new google.maps.Marker({
-        position,
-        map: googleMapInstance.current,
-        title,
-        icon: { url: iconUrl },
-      });
-    };
-
-    if (centerCoords) {
-      const centerMarker = createMarker(
-        centerCoords,
-        "Your Search Location",
-        "https://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-      );
-      markersRef.current.push(centerMarker);
-    }
-
-    processedProviders.forEach((p) => {
-      if (!p.latitude || !p.longitude) return;
-
-      const iconUrl =
-        p.id === highlightedId
-          ? "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
-          : "https://maps.google.com/mapfiles/ms/icons/green-dot.png";
-
-      const marker = createMarker(
-        { lat: p.latitude, lng: p.longitude },
-        p.displayName || p.name,
-        iconUrl
-      );
-
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 4px; font-size: 11px;">
-            <strong style="display: block; font-size: 12px; font-weight: 700; color: #0F172A; margin-bottom: 2px;">${
-              p.displayName || p.name
-            }</strong>
-            <span style="color: #64748b; display: block; margin-bottom: 4px;">${p.address}</span>
-            <span style="font-weight: 600; font-size: 11px; color: ${
-              p.slotsToday > 0 ? "#047857" : "#b91c1c"
-            }">
-              ${p.slotsToday > 0 ? `${p.slotsToday} slots available today` : "Fully Booked"}
-            </span>
-          </div>
-        `,
-      });
-
-      if (marker.addListener) {
-        marker.addListener("click", () => {
-          setHighlightedId(p.id);
-          const element = document.getElementById(`pharmacy-card-${p.id}`);
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
+        const res = await fetch(`/api/search?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.pharmacies)) {
+            setProviders(data.pharmacies);
           }
-          infoWindow.open(googleMapInstance.current, marker);
-        });
+        }
+      } catch (err) {
+        console.error("API search error:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [openTodayOnly, nhsOnly, privateOnly]
+  );
+
+  // 4. HANDLERS FOR INDEPENDENT FILTER CHANGES
+  const handleServiceChange = (newSvc: string) => {
+    setSearchService(newSvc);
+    updateUrlParams(searchLocation, newSvc, maxDistance, sortBy);
+    executeApiSearch(searchLocation, newSvc, maxDistance, sortBy);
+  };
+
+  const handleLocationChange = (newLoc: string) => {
+    setSearchLocation(newLoc);
+    updateUrlParams(newLoc, searchService, maxDistance, sortBy);
+    executeApiSearch(newLoc, searchService, maxDistance, sortBy);
+  };
+
+  const handleRadiusChange = (newRad: number) => {
+    setMaxDistance(newRad);
+    updateUrlParams(searchLocation, searchService, newRad, sortBy);
+    executeApiSearch(searchLocation, searchService, newRad, sortBy);
+  };
+
+  const handleSortChange = (newSort: string) => {
+    setSortBy(newSort);
+    updateUrlParams(searchLocation, searchService, maxDistance, newSort);
+    executeApiSearch(searchLocation, searchService, maxDistance, newSort);
+  };
+
+  // Combined Filtering Matrix
+  const filteredProviders = useMemo(() => {
+    let list = [...providers];
+
+    let targetLat = initialLat;
+    let targetLng = initialLng;
+
+    if (searchLocation.trim() && (targetLat == null || targetLng == null)) {
+      const geocoded = geocodeLocation(searchLocation);
+      if (geocoded) {
+        targetLat = geocoded.lat;
+        targetLng = geocoded.lng;
+      }
+    }
+
+    let listWithDistance = list.map((p) => {
+      let distanceMiles = (p as any).distanceMiles ?? null;
+      if (
+        distanceMiles == null &&
+        targetLat != null &&
+        targetLng != null &&
+        p.latitude != null &&
+        p.longitude != null
+      ) {
+        distanceMiles = Number(
+          getDistanceMiles(targetLat, targetLng, p.latitude, p.longitude).toFixed(1)
+        );
       }
 
-      markersRef.current.push(marker);
+      return {
+        ...p,
+        distanceMiles: distanceMiles ?? 1.2,
+      };
     });
-  }, [mapsLoaded, processedProviders, centerCoords, highlightedId]);
 
-  const hasActiveFilters =
-    distanceFilter !== "25" ||
-    serviceFilter !== "" ||
-    openTodayFilter ||
-    availableTodayFilter ||
-    ratingFilter !== "" ||
-    maxPrice !== "";
+    if (maxDistance > 0) {
+      listWithDistance = listWithDistance.filter(
+        (p) => p.distanceMiles === null || p.distanceMiles <= maxDistance
+      );
+    }
+
+    if (openTodayOnly) {
+      listWithDistance = listWithDistance.filter((p) => p.isOpenToday);
+    }
+
+    if (sortBy === "nearest") {
+      listWithDistance.sort((a, b) => (a.distanceMiles || 0) - (b.distanceMiles || 0));
+    } else if (sortBy === "price") {
+      listWithDistance.sort((a, b) => {
+        const priceA = a.services[0]?.price || 0;
+        const priceB = b.services[0]?.price || 0;
+        return priceA - priceB;
+      });
+    } else if (sortBy === "rating") {
+      listWithDistance.sort((a, b) => b.ratingScore - a.ratingScore);
+    }
+
+    return listWithDistance;
+  }, [providers, searchLocation, initialLat, initialLng, maxDistance, openTodayOnly, sortBy]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
-      {/* TOP UTILITY HEADER */}
-      <div className="border-b border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900 md:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">
-            <Link href="/" className="hover:text-slate-900 dark:hover:text-white">
-              Home
+    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 antialiased dark:bg-zinc-950 dark:text-slate-100">
+      {/* ========================================================================= */}
+      {/* 1. STICKY COMPACT SEARCH HEADER ON SCROLL */}
+      {/* ========================================================================= */}
+      {isScrolled && (
+        <div className="fixed left-0 right-0 top-0 z-40 border-b border-slate-200/90 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur-md transition-all dark:border-zinc-800 dark:bg-zinc-950/95">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+            <Link href="/" className="shrink-0">
+              <img
+                src="/assets/header-logo.png"
+                alt="NextDoorClinic"
+                className="h-7 w-auto dark:brightness-0 dark:invert"
+              />
             </Link>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            <span className="font-bold text-slate-900 dark:text-white">Search Clinics</span>
-          </div>
-          <div className="text-xs font-medium text-slate-500 dark:text-zinc-400">
-            Showing{" "}
-            <strong className="text-slate-900 dark:text-white">{processedProviders.length}</strong>{" "}
-            verified healthcare partners
-          </div>
-        </div>
-      </div>
 
-      {/* SEARCH HEADER BAR */}
-      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 py-4 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/95">
-        <div className="mx-auto max-w-7xl px-4 md:px-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="w-full md:w-[600px]">
+            <div className="hidden max-w-2xl flex-1 md:block">
               <SearchBar
-                initialLocation={initialLocation}
-                initialService={serviceFilter}
-                onSearch={handleLocationSearch}
+                initialService={searchService}
+                initialLocation={searchLocation}
+                onSearch={(loc, svc) => {
+                  if (loc) handleLocationChange(loc);
+                  if (svc) handleServiceChange(typeof svc === "string" ? svc : svc.name);
+                }}
               />
             </div>
 
-            {/* View Mode & Sort Controls */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
-                  Sort:
-                </span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                >
-                  <option value="distance">Distance: Nearest</option>
-                  <option value="rating">Rating: Highest</option>
-                  <option value="earliest">Earliest Availability</option>
-                  <option value="popular">Most Reviewed</option>
-                </select>
-              </div>
-
-              <div className="flex items-center rounded-md border border-slate-300 bg-slate-100 p-0.5 dark:border-zinc-700 dark:bg-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition-colors ${
-                    viewMode === "list"
-                      ? "shadow-xs bg-white text-slate-900 dark:bg-zinc-900 dark:text-white"
-                      : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
-                  }`}
-                >
-                  <ListIcon className="h-3.5 w-3.5" />
-                  <span>List</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("map")}
-                  className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition-colors ${
-                    viewMode === "map"
-                      ? "shadow-xs bg-white text-slate-900 dark:bg-zinc-900 dark:text-white"
-                      : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
-                  }`}
-                >
-                  <MapIcon className="h-3.5 w-3.5" />
-                  <span>Map</span>
-                </button>
-              </div>
-            </div>
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="shadow-2xs flex items-center space-x-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 md:hidden"
+            >
+              <Search className="h-3.5 w-3.5 text-[#10B981]" />
+              <span>Edit Search</span>
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* MAIN CONTAINER */}
-      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 md:px-8">
-        {/* MOBILE FILTER & SORT BAR (< lg) */}
-        <div className="shadow-xs mb-4 flex items-center justify-between gap-2 rounded-2xl border border-slate-200/90 bg-white p-2.5 lg:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileFiltersOpen(true)}
-            className="shadow-2xs flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-black text-slate-800 transition active:scale-95"
-          >
-            <Filter className="h-4 w-4 text-emerald-600" />
-            <span>Filter Clinics</span>
-            {hasActiveFilters && <span className="flex h-2 w-2 rounded-full bg-emerald-500" />}
-          </button>
+      {/* ========================================================================= */}
+      {/* 2. HERO SEARCH BAR CONTAINER (Dual Independent Filter Architecture) */}
+      {/* ========================================================================= */}
+      <section className="shadow-xs border-b border-slate-200/80 bg-white pb-8 pt-6 dark:border-zinc-900 dark:bg-zinc-950">
+        <div className="mx-auto max-w-6xl space-y-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#10B981]">
+                Real-Time Healthcare Search
+              </span>
+              <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+                {searchService ? (
+                  <>
+                    Showing pharmacies providing{" "}
+                    <span className="text-[#10B981]">
+                      &quot;
+                      {searchService.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                      &quot;
+                    </span>
+                  </>
+                ) : (
+                  "Find Verified Healthcare Clinics"
+                )}
+                {searchLocation && (
+                  <>
+                    {" "}
+                    near{" "}
+                    <span className="text-slate-700 dark:text-zinc-300">
+                      &quot;{searchLocation}&quot;
+                    </span>
+                  </>
+                )}
+              </h1>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                {filteredProviders.length} verified pharmacy clinic
+                {filteredProviders.length === 1 ? "" : "s"} found within {maxDistance} miles.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-400">Sort:</span>
+            {/* Quick Action Badges */}
+            <div className="flex shrink-0 items-center space-x-2">
+              <span className="inline-flex items-center space-x-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+                <ShieldCheck className="h-3 w-3 text-[#10B981]" />
+                <span>CQC & GPhC Regulated</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive Search Bar Component */}
+          <div className="pt-2">
+            <SearchBar
+              initialService={searchService}
+              initialLocation={searchLocation}
+              onSearch={(loc, svc) => {
+                if (loc) handleLocationChange(loc);
+                if (svc) handleServiceChange(typeof svc === "string" ? svc : svc.name);
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 3. MAIN RESULTS WORKSPACE & FILTERS BAR */}
+      {/* ========================================================================= */}
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+        {/* FILTER BAR ROW */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-4 dark:border-zinc-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Radius Selector */}
+            <div className="shadow-2xs flex items-center space-x-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+              <MapPin className="h-3.5 w-3.5 text-[#10B981]" />
+              <span>Radius:</span>
+              <select
+                value={maxDistance}
+                onChange={(e) => handleRadiusChange(parseInt(e.target.value, 10))}
+                className="cursor-pointer bg-transparent font-extrabold text-slate-900 outline-none dark:text-white"
+              >
+                <option value={5}>5 Miles</option>
+                <option value={10}>10 Miles</option>
+                <option value={15}>15 Miles</option>
+                <option value={25}>25 Miles</option>
+                <option value={50}>50 Miles</option>
+              </select>
+            </div>
+
+            {/* Availability Filter Toggle */}
+            <button
+              onClick={() => {
+                const nextVal = !openTodayOnly;
+                setOpenTodayOnly(nextVal);
+                updateUrlParams(searchLocation, searchService, maxDistance, sortBy);
+                executeApiSearch(searchLocation, searchService, maxDistance, sortBy);
+              }}
+              className={`inline-flex items-center space-x-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all ${
+                openTodayOnly
+                  ? "border-[#10B981] bg-emerald-50 text-[#10B981] dark:bg-emerald-950/60"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Open Today</span>
+            </button>
+
+            {/* NHS Filter Toggle */}
+            <button
+              onClick={() => {
+                const nextVal = !nhsOnly;
+                setNhsOnly(nextVal);
+                if (nextVal) setPrivateOnly(false);
+                updateUrlParams(searchLocation, searchService, maxDistance, sortBy);
+                executeApiSearch(searchLocation, searchService, maxDistance, sortBy);
+              }}
+              className={`inline-flex items-center space-x-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all ${
+                nhsOnly
+                  ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              }`}
+            >
+              <span>NHS Partner</span>
+            </button>
+          </div>
+
+          {/* Sort Selector */}
+          <div className="flex items-center space-x-2 text-xs font-bold">
+            <span className="text-slate-500 dark:text-zinc-400">Sort by:</span>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="h-8 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
+              onChange={(e) => handleSortChange(e.target.value)}
+              className="shadow-2xs cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-extrabold text-slate-900 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
             >
-              <option value="distance">Nearest</option>
-              <option value="rating">Highest Rated</option>
-              <option value="earliest">Earliest Date</option>
-              <option value="popular">Most Popular</option>
+              <option value="nearest">Nearest Pharmacy (Distance)</option>
+              <option value="earliest">Earliest Appointment</option>
+              <option value="rating">Highest Rating</option>
+              <option value="price">Lowest Price</option>
             </select>
           </div>
         </div>
 
-        {/* MOBILE FILTER DRAWER OVERLAY (< lg) */}
-        {mobileFiltersOpen && (
-          <div className="backdrop-blur-xs fixed inset-0 z-50 flex flex-col justify-end bg-slate-900/60 lg:hidden">
-            <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl duration-200 animate-in slide-in-from-bottom dark:bg-zinc-900">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-zinc-800">
-                <h3 className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
-                  <Filter className="h-4 w-4 text-emerald-600" /> Filter Healthcare Clinics
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setMobileFiltersOpen(false)}
-                  className="rounded-full bg-slate-100 p-2 text-slate-500 hover:text-slate-900 dark:bg-zinc-800 dark:text-zinc-400"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        {/* LOADING INDICATOR */}
+        {loading ? (
+          <div className="space-y-3 py-20 text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#10B981]" />
+            <p className="text-xs font-bold text-slate-500 dark:text-zinc-400">
+              Searching verified clinics near {searchLocation || "your location"}...
+            </p>
+          </div>
+        ) : filteredProviders.length === 0 ? (
+          /* EMPTY STATE RECOVERY CARD */
+          <div className="shadow-xs space-y-4 rounded-3xl border border-amber-200/80 bg-amber-50/40 p-8 text-center dark:border-amber-900/40 dark:bg-amber-950/20 sm:p-12">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+              <AlertCircle className="h-7 w-7" />
+            </div>
+            <div className="mx-auto max-w-md space-y-1">
+              <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                No pharmacies currently provide this service within {maxDistance} miles.
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
+                Try expanding your search radius, selecting a nearby city, or searching another
+                treatment name.
+              </p>
+            </div>
 
-              <div className="mt-4 space-y-4 text-xs">
-                {/* Radius */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
-                    Max Distance
-                  </label>
-                  <select
-                    value={distanceFilter}
-                    onChange={(e) => setDistanceFilter(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="5">Within 5 miles</option>
-                    <option value="10">Within 10 miles</option>
-                    <option value="25">Within 25 miles</option>
-                    <option value="50">Within 50 miles</option>
-                    <option value="anywhere">All Locations (UK)</option>
-                  </select>
-                </div>
-
-                {/* Treatment */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
-                    Clinical Treatment
-                  </label>
-                  <select
-                    value={serviceFilter}
-                    onChange={(e) => setServiceFilter(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">All Treatments</option>
-                    {allServiceNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Minimum Rating */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
-                    Minimum Rating
-                  </label>
-                  <select
-                    value={ratingFilter}
-                    onChange={(e) => setRatingFilter(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">Any Rating</option>
-                    <option value="4.0">4.0+ Stars</option>
-                    <option value="4.5">4.5+ Stars</option>
-                    <option value="4.8">4.8+ Stars</option>
-                  </select>
-                </div>
-
-                {/* Max Price */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
-                    Max Price (£)
-                  </label>
-                  <select
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">Any Price</option>
-                    <option value="20">Under £20</option>
-                    <option value="50">Under £50</option>
-                    <option value="100">Under £100</option>
-                  </select>
-                </div>
-
-                {/* Checkbox Options */}
-                <div className="space-y-3 border-t border-slate-100 pt-3 dark:border-zinc-800">
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={openTodayFilter}
-                      onChange={(e) => setOpenTodayFilter(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                      Open Today
-                    </span>
-                  </label>
-
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={availableTodayFilter}
-                      onChange={(e) => setAvailableTodayFilter(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                      Slots Available Today
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-4 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleResetFilters();
-                    setMobileFiltersOpen(false);
-                  }}
-                  className="flex-1 rounded-xl border border-slate-300 py-3 text-xs font-extrabold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200"
-                >
-                  Reset All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileFiltersOpen(false)}
-                  className="flex-1 rounded-xl bg-emerald-600 py-3 text-xs font-extrabold text-white shadow-md transition hover:bg-emerald-500 active:scale-95"
-                >
-                  Show {processedProviders.length} Clinics
-                </button>
-              </div>
+            {/* Recovery Action Buttons */}
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => handleRadiusChange(maxDistance + 15)}
+                className="rounded-xl bg-[#10B981] px-4 py-2.5 text-xs font-extrabold text-white shadow-md transition-all hover:bg-emerald-600 active:scale-95"
+              >
+                Increase Search Radius (+15 Miles)
+              </button>
+              <button
+                onClick={() => handleLocationChange("London")}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                Browse London
+              </button>
+              <button
+                onClick={() => handleLocationChange("Manchester")}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                Browse Manchester
+              </button>
             </div>
           </div>
-        )}
+        ) : (
+          /* SEARCH RESULTS LIST (AIRBNB / GOOGLE MAPS CARDS) */
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredProviders.map((pharmacy) => {
+              const rawTokens = (searchService || "")
+                .toLowerCase()
+                .replace(/-/g, " ")
+                .replace(/[^a-z0-9\s]/g, "")
+                .split(/\s+/)
+                .filter(
+                  (t) =>
+                    t.length >= 2 &&
+                    !["service", "treatment", "private", "clinic", "check"].includes(t)
+                );
 
-        <div className="grid gap-6 lg:grid-cols-12">
-          {/* DESKTOP SIDEBAR FILTERS (hidden lg:block) */}
-          <aside className="hidden lg:col-span-3 lg:block">
-            <div className="shadow-xs rounded-lg border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
-                <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                  <Filter className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Filters</span>
-                </h2>
-                {hasActiveFilters && (
-                  <button
-                    onClick={handleResetFilters}
-                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Reset
-                  </button>
-                )}
-              </div>
+              const matchedService =
+                pharmacy.services?.find((s) => {
+                  if (!rawTokens.length) return true;
+                  const sName = s.name.toLowerCase();
+                  return rawTokens.some((t) => sName.includes(t));
+                }) ||
+                pharmacy.services?.[0] ||
+                null;
 
-              <div className="mt-4 space-y-4">
-                {/* Radius */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                    Max Distance
-                  </label>
-                  <select
-                    value={distanceFilter}
-                    onChange={(e) => setDistanceFilter(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-800 focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="5">Within 5 miles</option>
-                    <option value="10">Within 10 miles</option>
-                    <option value="25">Within 25 miles</option>
-                    <option value="50">Within 50 miles</option>
-                    <option value="anywhere">All Locations (UK)</option>
-                  </select>
-                </div>
+              const isNhs = matchedService?.category?.toLowerCase().includes("nhs") || false;
+              const bookUrl = `/book/${pharmacy.slug || pharmacy.id}${
+                searchService ? `?service=${slugify(searchService)}` : ""
+              }`;
+              const profileUrl = `/provider/${pharmacy.slug || pharmacy.id}`;
 
-                {/* Treatment */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                    Clinical Treatment
-                  </label>
-                  <select
-                    value={serviceFilter}
-                    onChange={(e) => setServiceFilter(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-800 focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">All Treatments</option>
-                    {allServiceNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Minimum Rating */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                    Minimum Rating
-                  </label>
-                  <select
-                    value={ratingFilter}
-                    onChange={(e) => setRatingFilter(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-800 focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">Any Rating</option>
-                    <option value="4.0">4.0+ Stars</option>
-                    <option value="4.5">4.5+ Stars</option>
-                    <option value="4.8">4.8+ Stars</option>
-                  </select>
-                </div>
-
-                {/* Max Price */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                    Max Price (£)
-                  </label>
-                  <select
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-800 focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    <option value="">Any Price</option>
-                    <option value="20">Under £20</option>
-                    <option value="50">Under £50</option>
-                    <option value="100">Under £100</option>
-                  </select>
-                </div>
-
-                {/* Checkbox Options */}
-                <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-zinc-800">
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={openTodayFilter}
-                      onChange={(e) => setOpenTodayFilter(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-                    />
-                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                      Open Today
-                    </span>
-                  </label>
-
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={availableTodayFilter}
-                      onChange={(e) => setAvailableTodayFilter(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-                    />
-                    <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                      Slots Available Today
-                    </span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </aside>
-
-          {/* RESULTS CONTENT */}
-          <main className="space-y-4 lg:col-span-9">
-            {/* Search Context Banner */}
-            {serviceFilter && (
-              <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 px-5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-500">You searched for:</span>
-                  <span className="rounded-full border border-emerald-300 bg-emerald-200/60 px-2.5 py-1 font-extrabold text-emerald-950">
-                    {serviceFilter}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setServiceFilter("")}
-                  className="flex items-center gap-1 font-bold text-emerald-800 hover:underline"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" /> Clear Context
-                </button>
-              </div>
-            )}
-
-            {processedProviders.length === 0 ? (
-              /* EMPTY STATE */
-              <div className="space-y-6">
-                <div className="rounded-lg border border-slate-200 bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-900">
-                  <AlertCircle className="mx-auto h-8 w-8 text-amber-500" />
-                  <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">
-                    No matching clinics found
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                    Try broadening your distance radius or clearing active filters to see more
-                    results.
-                  </p>
-                  <button
-                    onClick={handleResetFilters}
-                    className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Reset All Filters
-                  </button>
-                </div>
-
-                {/* CALLBACK / WAITLIST FORMS */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-                    <h4 className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:border-zinc-800 dark:text-white">
-                      <Phone className="h-3.5 w-3.5 text-slate-500" />
-                      Request Clinic Callback
-                    </h4>
-                    {callbackSuccess ? (
-                      <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
-                        Callback request submitted successfully.
-                      </div>
-                    ) : (
-                      <form onSubmit={handleCallbackSubmit} className="mt-3 space-y-3">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
-                            Full Name
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={callbackName}
-                            onChange={(e) => setCallbackName(e.target.value)}
-                            className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2.5 text-xs font-medium focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
-                            Phone Number
-                          </label>
-                          <input
-                            type="tel"
-                            required
-                            value={callbackPhone}
-                            onChange={(e) => setCallbackPhone(e.target.value)}
-                            className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2.5 text-xs font-medium focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
-                            Notes
-                          </label>
-                          <textarea
-                            rows={2}
-                            value={callbackNotes}
-                            onChange={(e) => setCallbackNotes(e.target.value)}
-                            className="mt-1 w-full rounded border border-slate-300 bg-white p-2 text-xs font-medium focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
-                          />
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={callbackLoading}
-                          className="h-8 w-full rounded bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900"
-                        >
-                          {callbackLoading ? "Submitting..." : "Submit Request"}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-                    <h4 className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold uppercase tracking-wider text-slate-900 dark:border-zinc-800 dark:text-white">
-                      <Mail className="h-3.5 w-3.5 text-slate-500" />
-                      Availability Alert Waitlist
-                    </h4>
-                    {waitlistSuccess ? (
-                      <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
-                        Waitlist registration complete.
-                      </div>
-                    ) : (
-                      <form onSubmit={handleWaitlistSubmit} className="mt-3 space-y-3">
-                        <p className="text-xs text-slate-500 dark:text-zinc-400">
-                          Receive email notifications as soon as new appointment slots become
-                          available in this region.
-                        </p>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
-                            Email Address
-                          </label>
-                          <input
-                            type="email"
-                            required
-                            value={waitlistEmail}
-                            onChange={(e) => setWaitlistEmail(e.target.value)}
-                            className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2.5 text-xs font-medium focus:border-slate-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
-                          />
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={waitlistLoading}
-                          className="h-8 w-full rounded bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900"
-                        >
-                          {waitlistLoading ? "Submitting..." : "Subscribe to Alerts"}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* MAP VIEW CONTAINER */}
+              return (
                 <div
-                  ref={mapRef}
-                  className={`h-96 w-full rounded-lg border border-slate-200 bg-white ${
-                    viewMode === "map" ? "block" : "hidden"
-                  }`}
-                  style={{ minHeight: "450px" }}
-                />
-
-                {/* LIST VIEW ITEMS */}
-                <div className={`space-y-3 ${viewMode === "list" ? "block" : "hidden"}`}>
-                  {processedProviders.map((p) => {
-                    const isHighlighted = p.id === highlightedId;
-
-                    // Resolve matched service from filter
-                    const matchedService = serviceFilter
-                      ? p.services.find((s) =>
-                          s.name.toLowerCase().includes(serviceFilter.toLowerCase())
-                        ) || p.services[0]
-                      : p.services[0];
-
-                    const matchedServicesList = serviceFilter
-                      ? p.services.filter((s) =>
-                          s.name.toLowerCase().includes(serviceFilter.toLowerCase())
-                        )
-                      : p.services;
-
-                    return (
-                      <div
-                        id={`pharmacy-card-${p.id}`}
-                        key={p.id}
-                        className={`shadow-xs rounded-2xl border bg-white p-4 transition-all sm:p-5 ${
-                          isHighlighted
-                            ? "border-emerald-500 ring-2 ring-emerald-500/20"
-                            : "border-slate-200/90 hover:border-emerald-300 hover:shadow-md"
-                        }`}
-                      >
-                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                          {/* Main Info */}
-                          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-                            {p.logoUrl ? (
-                              <img
-                                src={p.logoUrl}
-                                alt={p.name}
-                                className="shadow-xs h-10 w-10 shrink-0 rounded-2xl border border-slate-200 bg-white object-contain p-1 sm:h-12 sm:w-12"
-                              />
-                            ) : (
-                              <div
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-black uppercase text-white shadow-sm sm:h-12 sm:w-12"
-                                style={{ backgroundColor: p.brandColor || "#10B981" }}
-                              >
-                                {p.name.substring(0, 2)}
-                              </div>
-                            )}
-
-                            <div className="min-w-0 flex-1 space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                <h3 className="text-sm font-black leading-snug text-slate-900 sm:text-base">
-                                  {p.displayName || p.name}
-                                </h3>
-
-                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
-                                  <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
-                                  GPhC Partner
-                                </span>
-                              </div>
-
-                              <p className="truncate text-xs font-medium text-slate-500">
-                                {p.address}
-                              </p>
-
-                              {/* Distance & Reviews Badges */}
-                              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                                  <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                                  {p.distance !== 9999
-                                    ? `${p.distance.toFixed(1)} mi away`
-                                    : getCity(p.address)}
-                                </span>
-
-                                <div className="flex items-center rounded-md border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-amber-500">
-                                  <Star className="h-3.5 w-3.5 fill-current" />
-                                  <span className="ml-1 font-bold text-amber-900">
-                                    {p.ratingScore.toFixed(1)}
-                                  </span>
-                                  <span className="ml-1 text-[10px] text-amber-700">
-                                    ({p.ratingCount})
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Matched Service Context Highlight */}
-                              {matchedService && (
-                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs font-semibold text-emerald-950">
-                                  <span className="flex min-w-0 items-center gap-1.5">
-                                    <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-                                    <span className="truncate">
-                                      <strong>{matchedService.name}</strong>
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 font-extrabold text-emerald-700">
-                                    £{matchedService.price.toFixed(2)} ({matchedService.duration}m)
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Multiple Matched Services Chips */}
-                              {matchedServicesList.length > 1 && (
-                                <div className="flex flex-wrap gap-1.5 pt-1">
-                                  <span className="self-center text-[10px] font-bold uppercase text-slate-400">
-                                    Options:
-                                  </span>
-                                  {matchedServicesList.map((svc) => (
-                                    <Link
-                                      key={svc.id}
-                                      href={`/book/${p.slug}?serviceId=${svc.id}`}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-800 transition hover:border-emerald-500 hover:bg-emerald-50"
-                                    >
-                                      <span>{svc.name}</span>
-                                      <span className="font-extrabold text-emerald-700">
-                                        £{svc.price.toFixed(2)}
-                                      </span>
-                                    </Link>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Status & Mobile Responsive Action Buttons */}
-                          <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 pt-3 lg:items-end lg:justify-between lg:border-t-0 lg:pt-0">
-                            <div className="flex items-center justify-between gap-1 lg:flex-col lg:items-end lg:justify-start">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold">
-                                <span
-                                  className={`h-2 w-2 rounded-full ${
-                                    p.isOpenToday ? "bg-emerald-500" : "bg-rose-500"
-                                  }`}
-                                />
-                                <span className="font-bold text-slate-800">
-                                  {p.isOpenToday ? "Open Today" : "Closed Today"}
-                                </span>
-                              </div>
-
-                              {p.earliestAppointment && (
-                                <div className="text-[11px] font-semibold text-slate-500">
-                                  Earliest:{" "}
-                                  <span className="font-bold text-emerald-700">
-                                    {p.earliestAppointment}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Action Buttons: Book Now (Primary) vs View Service (Secondary) */}
-                            {matchedService && (
-                              <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center lg:w-auto">
-                                <Link
-                                  href={`/book/${p.slug}?serviceId=${matchedService.id}`}
-                                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3 text-center text-xs font-extrabold text-white shadow-md transition hover:bg-emerald-500 active:scale-95 sm:py-2.5"
-                                >
-                                  <span>Book Now</span>
-                                  <ChevronRight className="h-4 w-4" />
-                                </Link>
-
-                                <div className="flex items-center gap-2">
-                                  <Link
-                                    href={`/${p.slug}/${slugify(matchedService.name)}`}
-                                    className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-xs font-bold text-slate-700 transition hover:bg-slate-50 sm:flex-none sm:py-2.5"
-                                  >
-                                    <span>View Service</span>
-                                  </Link>
-
-                                  <a
-                                    href={`https://maps.google.com/?q=${encodeURIComponent(`${p.name} ${p.address}`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="rounded-xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:border-emerald-300 hover:text-emerald-600 sm:p-2.5"
-                                    title="Get Directions"
-                                  >
-                                    <Navigation className="h-4 w-4" />
-                                  </a>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                  key={pharmacy.id}
+                  className="shadow-xs group flex flex-col justify-between space-y-4 rounded-2xl border border-slate-200/90 bg-white p-5 transition-all hover:border-[#10B981]/50 hover:shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <div className="space-y-3">
+                    {/* Header Row: Logo, Name & Rating */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center space-x-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 font-extrabold text-slate-800 dark:border-zinc-800 dark:bg-zinc-800 dark:text-white">
+                          {pharmacy.logoUrl ? (
+                            <img
+                              src={pharmacy.logoUrl}
+                              alt={pharmacy.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            pharmacy.name[0] || "P"
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-bold text-slate-900 transition-colors group-hover:text-[#10B981] dark:text-white">
+                            {pharmacy.displayName || pharmacy.name}
+                          </h3>
+                          <p className="mt-0.5 flex items-center space-x-1 truncate text-[11px] text-slate-500 dark:text-zinc-400">
+                            <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
+                            <span>{pharmacy.city || pharmacy.address}</span>
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
+
+                      {/* Distance Badge */}
+                      {pharmacy.distanceMiles !== undefined && pharmacy.distanceMiles !== null && (
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                          {pharmacy.distanceMiles} mi
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Service & Price Row */}
+                    {matchedService ? (
+                      <div className="space-y-1 rounded-xl border border-slate-100 bg-slate-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-950/60">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            {matchedService.name}
+                          </span>
+                          <span className="font-mono text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                            £{Number(matchedService.price).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-[10px] font-semibold text-slate-500 dark:text-zinc-400">
+                          <span>{matchedService.duration} mins</span>
+                          <span>&bull;</span>
+                          <span>{isNhs ? "NHS Funded" : "Private Consultation"}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs font-semibold text-slate-600 dark:border-zinc-800 dark:bg-zinc-950/60 dark:text-zinc-400">
+                        {pharmacy.services?.length || 0} Clinical Services Available
+                      </div>
+                    )}
+
+                    {/* Status & Availability Badges */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                      <span className="inline-flex items-center space-x-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        <Clock className="h-3 w-3 text-[#10B981]" />
+                        <span>{pharmacy.earliestAppointment || "Slots Available Today"}</span>
+                      </span>
+
+                      <span className="inline-flex items-center space-x-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                        <span>
+                          {pharmacy.ratingScore} ({pharmacy.ratingCount || 12})
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="flex items-center space-x-2 border-t border-slate-100 pt-2 dark:border-zinc-800">
+                    <Link
+                      href={bookUrl}
+                      className="shadow-xs inline-flex flex-1 items-center justify-center space-x-1 rounded-xl bg-[#10B981] px-3 py-2.5 text-xs font-extrabold text-white transition-all hover:bg-emerald-600 active:scale-95"
+                    >
+                      <span>Book Appointment</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                    <Link
+                      href={profileUrl}
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+                    >
+                      View Clinic
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            )}
-          </main>
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

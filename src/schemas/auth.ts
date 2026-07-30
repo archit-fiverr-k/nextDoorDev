@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidUKOrDevPhone } from "@/lib/phone-validation";
 
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -24,7 +25,13 @@ export const registerPatientSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters long"),
   lastName: z.string().min(2, "Last name must be at least 2 characters long"),
   email: z.string().email("Invalid email address"),
-  phone: z.string().min(5, "Mobile number is too short"),
+  phone: z
+    .string()
+    .min(5, "Mobile number is required")
+    .refine(
+      (val) => isValidUKOrDevPhone(val),
+      "Only UK mobile numbers (+44 / 07...) are supported."
+    ),
   password: z.string().min(8, "Password must be at least 8 characters long"),
   confirmPassword: z.string().min(8, "Password must be at least 8 characters long"),
   acceptPrivacyPolicy: z

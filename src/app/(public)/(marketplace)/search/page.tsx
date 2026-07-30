@@ -8,9 +8,12 @@ export const revalidate = 0; // Disable static cache for real-time slot checking
 interface SearchPageProps {
   searchParams: {
     location?: string;
+    postcode?: string;
     service?: string;
     lat?: string;
     lng?: string;
+    radius?: string;
+    sort?: string;
   };
 }
 
@@ -75,7 +78,10 @@ function formatEarliestTime(date: Date): string {
 }
 
 export default async function SearchResultsPage({ searchParams }: SearchPageProps) {
-  const { location = "", service = "", lat = "", lng = "" } = searchParams;
+  const location = searchParams.postcode || searchParams.location || "";
+  const service = searchParams.service || "";
+  const lat = searchParams.lat || "";
+  const lng = searchParams.lng || "";
 
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -174,6 +180,17 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
       const ratingScore = parseFloat((4.5 + (charSum % 5) / 10).toFixed(1));
       const ratingCount = 50 + (charSum % 150);
 
+      let pharmacyLat = p.latitude;
+      let pharmacyLng = p.longitude;
+
+      if (!pharmacyLat || !pharmacyLng) {
+        const fallbackGeo = geocodeLocation(dbPostcode || dbCity || p.address);
+        if (fallbackGeo) {
+          pharmacyLat = fallbackGeo.lat;
+          pharmacyLng = fallbackGeo.lng;
+        }
+      }
+
       return {
         id: p.id,
         name: p.name,
@@ -183,8 +200,8 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
         displayName: p.displayName,
         address: p.address,
         phone: p.phone,
-        latitude: p.latitude,
-        longitude: p.longitude,
+        latitude: pharmacyLat,
+        longitude: pharmacyLng,
         postcode: dbPostcode,
         city: dbCity,
         isOpenToday,
@@ -223,27 +240,14 @@ export default async function SearchResultsPage({ searchParams }: SearchPageProp
   const serviceNames = allServicesList.map((s) => s.name);
 
   return (
-    <div className="min-h-screen w-full bg-slate-50/50 py-4 dark:bg-zinc-950/40 sm:py-10">
-      <div className="mx-auto max-w-7xl space-y-4 px-3 sm:space-y-8 sm:px-6 lg:px-8">
-        <div>
-          <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
-            Healthcare Directory
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400 sm:text-sm">
-            Search and book private clinical services in your local area.
-          </p>
-        </div>
-
-        <SearchView
-          initialLocation={location}
-          initialLat={centerLat}
-          initialLng={centerLng}
-          initialService={service}
-          initialProviders={processedProviders}
-          categories={dbCategories}
-          allServiceNames={serviceNames}
-        />
-      </div>
-    </div>
+    <SearchView
+      initialLocation={location}
+      initialLat={centerLat}
+      initialLng={centerLng}
+      initialService={service}
+      initialProviders={processedProviders}
+      categories={dbCategories}
+      allServiceNames={serviceNames}
+    />
   );
 }

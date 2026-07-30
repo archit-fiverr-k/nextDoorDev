@@ -16,10 +16,14 @@ export function TrustTicker({ tickerLines, tickerTitle }: TrustTickerProps) {
   useEffect(() => {
     if (tickerLines.length <= 1) return;
     const interval = setInterval(() => {
-      handleNext();
+      setIsAnimating(true);
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % tickerLines.length);
+        setIsAnimating(false);
+      }, 200);
     }, 3000);
     return () => clearInterval(interval);
-  }, [tickerLines, currentIndex]);
+  }, [tickerLines.length]);
 
   const handlePrev = () => {
     if (isAnimating) return;

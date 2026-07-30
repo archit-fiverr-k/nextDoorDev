@@ -11,7 +11,7 @@ import {
 import { hashPassword, verifyPassword } from "@/lib/crypto";
 import { signIn, signOut } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { sendEmail, sendPasswordResetEmail } from "@/lib/email";
+import { sendEmail, sendPasswordResetEmail, sendPatientWelcomeEmail } from "@/lib/email";
 import { rateLimit } from "@/lib/rate-limit";
 import { headers } from "next/headers";
 
@@ -66,7 +66,32 @@ export async function loginAction(data: { email: string; password?: string }) {
     ) {
       return { success: true };
     }
-    return { success: false, error: error.message || "Invalid credentials" };
+
+    // Format Auth.js / NextAuth errors cleanly for production
+    const rawMsg = String(error?.message || error || "");
+    if (
+      rawMsg.includes("CallbackRouteError") ||
+      rawMsg.includes("CredentialsSignin") ||
+      rawMsg.includes("errors.authjs.dev") ||
+      rawMsg.includes("Invalid credentials")
+    ) {
+      return {
+        success: false,
+        error: "Invalid email address or password. Please check your credentials and try again.",
+      };
+    }
+
+    if (rawMsg.includes("AccessDenied")) {
+      return {
+        success: false,
+        error: "Access denied. Your account may be pending approval or suspended.",
+      };
+    }
+
+    return {
+      success: false,
+      error: "Invalid email address or password. Please check your credentials and try again.",
+    };
   }
 }
 
@@ -86,7 +111,7 @@ export async function logoutAction() {
       },
     });
   }
-  await signOut({ redirect: true, redirectTo: "/login" });
+  await signOut({ redirect: true, redirectTo: "/" });
   return { success: true };
 }
 
@@ -129,6 +154,7 @@ export async function registerPharmacyAction(data: RegisterInput) {
         phone: "",
         address: "",
         isFirstLogin: true, // Requires first login change
+        role: "pharmacy",
       },
     });
 
@@ -392,6 +418,7 @@ export async function registerPatientAction(data: RegisterPatientInput) {
           lastName,
           phone,
           passwordHash,
+          role: "user",
         },
       });
     } else {
@@ -403,6 +430,7 @@ export async function registerPatientAction(data: RegisterPatientInput) {
           email,
           phone,
           passwordHash,
+          role: "user",
         },
       });
     }
@@ -420,6 +448,16 @@ export async function registerPatientAction(data: RegisterPatientInput) {
       });
     } catch (auditErr) {
       console.error("Audit log notice:", auditErr);
+    }
+
+    // Dispatch Promotional Welcome Email
+    try {
+      await sendPatientWelcomeEmail(email, {
+        patientName: `${firstName} ${lastName}`.trim() || "Patient",
+      });
+      console.log(`✅ [Welcome Email] Sent promotional welcome email to ${email}`);
+    } catch (welcomeErr) {
+      console.warn("⚠️ Failed to send patient welcome email:", welcomeErr);
     }
 
     return { success: true };

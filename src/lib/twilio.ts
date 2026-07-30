@@ -8,6 +8,43 @@ interface SendMessageOptions {
 }
 
 /**
+ * Format any input phone string into strict E.164 standard.
+ * Supports UK numbers (+44 / 07...), developer test numbers (+91), and international formats.
+ */
+export function formatE164Phone(phone: string): string {
+  if (!phone) return "";
+  let cleaned = phone.trim().replace(/[\s\-\(\)]/g, "");
+
+  // If already starts with '+', return clean string
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  // Developer test number exception (+916296992939)
+  if (
+    digitsOnly === "916296992939" ||
+    digitsOnly === "6296992939" ||
+    digitsOnly === "06296992939"
+  ) {
+    return "+916296992939";
+  }
+
+  // UK local number starting with '0': e.g., 07123456789 -> +447123456789
+  if (cleaned.startsWith("0")) {
+    return `+44${cleaned.substring(1)}`;
+  }
+
+  // UK number starting with '44': e.g., 447123456789 -> +447123456789
+  if (cleaned.startsWith("44")) {
+    return `+${cleaned}`;
+  }
+
+  return `+${cleaned}`;
+}
+
+/**
  * Helper to fetch Twilio configuration dynamically.
  * Priority: Database (SystemSetting) > Environment Variables
  */
@@ -41,15 +78,11 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
   let errorMessage: string | null = null;
   let sid = `sms_${Date.now()}`;
 
-  // Ensure E.164 phone number formatting with leading '+'
-  let formattedTo = to.trim();
-  if (!formattedTo.startsWith("+")) {
-    formattedTo = `+${formattedTo}`;
-  }
+  const formattedTo = formatE164Phone(to);
 
   if (!client) {
     console.log("\n=========================================");
-    console.log(`📱 [MOCK SMS DISPATCHED]`);
+    console.log(`📱 [MOCK SMS DISPATCHED] (No Twilio Credentials Configured)`);
     console.log(`To: ${formattedTo}`);
     console.log(`Body: ${body}`);
     console.log("=========================================\n");
@@ -57,7 +90,7 @@ export async function sendSMS({ to, body }: SendMessageOptions) {
     try {
       if (!smsSender) {
         throw new Error(
-          "Twilio Phone Number (Sender) is not configured in integrations settings or environment variables"
+          "Twilio Phone Number (SMS Sender) is not configured in integrations settings or environment variables"
         );
       }
 
@@ -104,16 +137,13 @@ export async function sendWhatsapp({ to, body }: SendMessageOptions) {
   let errorMessage: string | null = null;
   let sid = `wa_${Date.now()}`;
 
-  // Formatting recipient phone number for WhatsApp
-  let rawTo = to.trim().replace(/^whatsapp:/i, "");
-  if (!rawTo.startsWith("+")) {
-    rawTo = `+${rawTo}`;
-  }
+  // Format recipient for WhatsApp E.164
+  const rawTo = formatE164Phone(to.replace(/^whatsapp:/i, ""));
   const formattedTo = `whatsapp:${rawTo}`;
 
   if (!client) {
     console.log("\n=========================================");
-    console.log(`💬 [MOCK WHATSAPP DISPATCHED]`);
+    console.log(`💬 [MOCK WHATSAPP DISPATCHED] (No Twilio Credentials Configured)`);
     console.log(`To: ${formattedTo}`);
     console.log(`Body: ${body}`);
     console.log("=========================================\n");
@@ -121,14 +151,11 @@ export async function sendWhatsapp({ to, body }: SendMessageOptions) {
     try {
       if (!whatsappSender) {
         throw new Error(
-          "Twilio WhatsApp Number (Sender) is not configured in integrations settings or environment variables"
+          "Twilio WhatsApp Sender Number is not configured in integrations settings or environment variables"
         );
       }
 
-      let rawFrom = whatsappSender.trim().replace(/^whatsapp:/i, "");
-      if (!rawFrom.startsWith("+")) {
-        rawFrom = `+${rawFrom}`;
-      }
+      const rawFrom = formatE164Phone(whatsappSender.replace(/^whatsapp:/i, ""));
       const formattedFrom = `whatsapp:${rawFrom}`;
 
       const message = await client.messages.create({
@@ -172,10 +199,7 @@ export async function sendWhatsapp({ to, body }: SendMessageOptions) {
 export async function sendVerifyOtp({ to, code }: { to: string; code?: string }) {
   const { client, verifySid } = await getTwilioConfig();
 
-  let formattedTo = to.trim();
-  if (!formattedTo.startsWith("+")) {
-    formattedTo = `+${formattedTo}`;
-  }
+  const formattedTo = formatE164Phone(to);
 
   if (client && verifySid) {
     try {
@@ -207,10 +231,7 @@ export async function sendVerifyOtp({ to, code }: { to: string; code?: string })
 export async function checkVerifyOtp({ to, code }: { to: string; code: string }) {
   const { client, verifySid } = await getTwilioConfig();
 
-  let formattedTo = to.trim();
-  if (!formattedTo.startsWith("+")) {
-    formattedTo = `+${formattedTo}`;
-  }
+  const formattedTo = formatE164Phone(to);
 
   if (client && verifySid) {
     try {

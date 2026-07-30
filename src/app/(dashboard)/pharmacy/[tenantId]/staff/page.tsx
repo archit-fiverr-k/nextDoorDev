@@ -10,31 +10,48 @@ interface PharmacyStaffPageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyStaffPage({ params }: PharmacyStaffPageProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
+
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
+  });
+
+  if (!pharmacy) {
+    notFound();
+  }
 
   // Tenant Boundary Isolation Guard
   const isTenantUser = session.user.role === "pharmacy";
   const isPlatformAdmin =
     session.user.role === "super_admin" || session.user.role === "platform_admin";
 
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
     redirect("/");
   }
   if (!isTenantUser && !isPlatformAdmin) {
     redirect("/");
   }
 
+  const pharmacyId = pharmacy.id;
+
   // Fetch all staff members for the pharmacy
   const staff = await db.staff.findMany({
-    where: { pharmacyId: params.tenantId },
+    where: { pharmacyId },
     orderBy: { createdAt: "desc" },
   });
 
-  // Fetch audit logs relating to staff changes to satisfy the "Audit Logs" feature requirement
+  // Fetch audit logs relating to staff changes
   const auditLogs = await db.auditLog.findMany({
     where: {
-      pharmacyId: params.tenantId,
+      pharmacyId,
       entityName: { in: ["Staff", "StaffPassword"] },
     },
     orderBy: { createdAt: "desc" },
@@ -52,7 +69,7 @@ export default async function PharmacyStaffPage({ params }: PharmacyStaffPagePro
       </div>
 
       <StaffTable
-        pharmacyId={params.tenantId}
+        pharmacyId={pharmacy.slug || pharmacyId}
         staff={staff}
         auditLogs={auditLogs}
         role={session.user.role as "super_admin" | "platform_admin" | "pharmacy"}

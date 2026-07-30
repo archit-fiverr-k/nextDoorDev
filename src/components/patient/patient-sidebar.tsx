@@ -8,10 +8,7 @@ import {
   LayoutDashboard,
   Calendar,
   Search,
-  Building2,
-  User,
   Settings,
-  Bell,
   LogOut,
   X,
   ShieldCheck,
@@ -23,8 +20,6 @@ const NAV_ITEMS = [
   { href: "/patient/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patient/appointments", label: "My Appointments", icon: Calendar },
   { href: "/services", label: "Book Appointment", icon: Search },
-  { href: "/services", label: "Find Clinics", icon: Building2 },
-  { href: "/patient/profile", label: "Medical Profile", icon: User },
   { href: "/patient/settings", label: "Settings", icon: Settings },
 ];
 

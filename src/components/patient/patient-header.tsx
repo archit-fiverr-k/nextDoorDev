@@ -106,8 +106,6 @@ export default function PatientHeader({ user, onOpenMobileSidebar }: PatientHead
   const desktopNavLinks = [
     { href: "/patient/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
     { href: "/patient/appointments", label: "Appointments", icon: Calendar },
-    { href: "/patient/appointments", label: "Medical Records", icon: FileText },
-    { href: "/services", label: "Find Clinics", icon: Building2 },
   ];
 
   return (
@@ -117,13 +115,13 @@ export default function PatientHeader({ user, onOpenMobileSidebar }: PatientHead
         {/* ========================================================= */}
         {/* DEDICATED MOBILE HEADER (< 768px)                          */}
         {/* ========================================================= */}
-        <div className="flex h-[64px] items-center justify-between md:hidden">
+        <div className="flex h-[60px] items-center justify-between md:hidden">
           {/* LEFT: ☰ Menu Button */}
           <div className="flex shrink-0 items-center">
             {onOpenMobileSidebar && (
               <button
                 onClick={onOpenMobileSidebar}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-slate-100/80 text-slate-700 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 active:scale-95 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80 text-slate-700 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 active:scale-95 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 aria-label="Open Mobile Navigation Menu"
               >
                 <Menu className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -132,33 +130,33 @@ export default function PatientHeader({ user, onOpenMobileSidebar }: PatientHead
           </div>
 
           {/* CENTER: Logo + Portal Label */}
-          <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-2 text-center">
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-1 text-center">
             <Link
               href="/patient/dashboard"
-              className="truncate text-sm font-extrabold tracking-tight text-slate-900 transition hover:text-emerald-600 dark:text-white"
+              className="truncate text-xs font-black tracking-tight text-slate-900 transition hover:text-emerald-600 dark:text-white sm:text-sm"
             >
               NextDoorClinic
             </Link>
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
               Patient Portal
             </span>
           </div>
 
           {/* RIGHT: Notifications + Book Button + Avatar */}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             {/* Notification Bell (Triggers Floating Popover Panel) */}
             <button
               onClick={() => {
                 setShowNotificationsPopover(!showNotificationsPopover);
                 if (!showNotificationsPopover) loadNotifications();
               }}
-              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-slate-100/80 text-slate-700 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 active:scale-95 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80 text-slate-700 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 active:scale-95 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
               aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ""}`}
             >
-              <Bell className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               {unreadCount > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-black text-white ring-2 ring-white dark:ring-zinc-950">
+                <span className="absolute right-1 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-black text-white ring-2 ring-white dark:ring-zinc-950">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
@@ -166,17 +164,17 @@ export default function PatientHeader({ user, onOpenMobileSidebar }: PatientHead
 
             {/* Compact Book Button */}
             <Link
-              href="/services"
-              className="shadow-xs flex min-h-[44px] items-center gap-1 whitespace-nowrap rounded-full bg-emerald-600 px-3.5 text-xs font-extrabold text-white transition hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 active:scale-95"
+              href="/search"
+              className="shadow-xs flex h-10 items-center gap-1 whitespace-nowrap rounded-full bg-emerald-600 px-2.5 text-xs font-extrabold text-white transition hover:bg-emerald-500 focus:outline-none active:scale-95 sm:px-3.5"
             >
               <Plus className="h-4 w-4 stroke-[3]" />
-              <span>Book</span>
+              <span className="hidden sm:inline">Book</span>
             </Link>
 
             {/* Profile Avatar Dropdown Button */}
             <button
               onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 bg-slate-100 p-0.5 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 p-0.5 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div className="shadow-xs flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-black text-white">
                 {getInitials(user.name)}
@@ -227,22 +225,6 @@ export default function PatientHeader({ user, onOpenMobileSidebar }: PatientHead
               }`}
             >
               Appointments
-            </Link>
-            <Link
-              href="/patient/profile"
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                pathname.startsWith("/patient/profile")
-                  ? "shadow-xs bg-white text-emerald-600 dark:bg-zinc-800 dark:text-emerald-400"
-                  : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
-              }`}
-            >
-              Medical Records
-            </Link>
-            <Link
-              href="/services"
-              className="rounded-full px-4 py-2 text-xs font-bold text-slate-600 transition hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
-            >
-              Find Clinics
             </Link>
           </nav>
 

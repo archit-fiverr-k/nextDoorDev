@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { slugify } from "@/lib/slug";
 import {
   ShieldCheck,
   Clock,
@@ -232,7 +233,7 @@ export function ServicePageView({
             {/* Quick Action Buttons Row */}
             <div className="grid grid-cols-3 gap-2 pt-1">
               <Link
-                href={`/book/${pharmacy.slug}?serviceId=${service.id}`}
+                href={`/book/${pharmacy.slug}?service=${slugify(service.name)}`}
                 className="col-span-1 flex items-center justify-center gap-1 rounded-xl bg-emerald-500 py-2.5 text-xs font-black text-white shadow-md active:scale-95"
               >
                 <CalendarCheck className="h-3.5 w-3.5" />
@@ -302,7 +303,7 @@ export function ServicePageView({
 
               <div className="flex items-center space-x-4 pt-4">
                 <Link
-                  href={`/book/${pharmacy.slug}?serviceId=${service.id}`}
+                  href={`/book/${pharmacy.slug}?service=${slugify(service.name)}`}
                   className="flex items-center space-x-2 rounded-xl bg-emerald-600 px-6 py-3.5 text-xs font-extrabold text-white shadow-md transition-all hover:bg-emerald-500 active:scale-95"
                 >
                   <CalendarCheck className="h-4 w-4" />
@@ -347,7 +348,7 @@ export function ServicePageView({
             <Phone className="h-4 w-4 text-emerald-600" />
           </a>
           <Link
-            href={`/book/${pharmacy.slug}?serviceId=${service.id}`}
+            href={`/book/${pharmacy.slug}?service=${slugify(service.name)}`}
             className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md active:scale-95"
           >
             <CalendarCheck className="h-4 w-4" />
@@ -497,7 +498,7 @@ export function ServicePageView({
 
                   <div className="mt-4 border-t border-slate-100 pt-3 dark:border-zinc-800">
                     <Link
-                      href={`/book/${pharmacy.slug}?serviceId=${rel.id}`}
+                      href={`/book/${pharmacy.slug}?service=${slugify(rel.name)}`}
                       className="flex w-full items-center justify-center space-x-1.5 rounded-xl bg-slate-900 py-2 text-xs font-extrabold text-white active:scale-95 dark:bg-white dark:text-slate-900"
                     >
                       <CalendarCheck className="h-3.5 w-3.5" />

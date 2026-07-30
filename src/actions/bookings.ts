@@ -154,10 +154,49 @@ export async function createBookingAction(data: CreateBookingInput) {
     }
 
     try {
-      const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment booking at *${pharmacy.name}* has been confirmed!\n\n📋 *Treatment:* ${service.name}\n📅 *Booking Ref:* ${referenceCode}\n📍 *Clinic:* ${pharmacy.name}\n\nThank you for choosing NextDoorClinic!`;
+      const whatsappBody = `Hello ${patientName} 👋\n\nYour appointment booking at *${pharmacy.name}* has been received!\n\n📋 *Treatment:* ${service.name}\n📅 *Booking Ref:* ${referenceCode}\n📍 *Clinic:* ${pharmacy.name}\n\nStatus: *Awaiting Pharmacy Approval*\n\nThank you for choosing NextDoorClinic!`;
       await sendWhatsapp({ to: patientPhone, body: whatsappBody });
     } catch (waErr) {
       console.warn("⚠️ Failed to send booking WhatsApp:", waErr);
+    }
+
+    // 5b. Send New Booking Awaiting Email to Pharmacy Owner
+    if (pharmacy.email) {
+      try {
+        const portalUrl = `${appBaseUrl}/pharmacy/${pharmacy.slug || pharmacy.id}/appointments`;
+        const subject = `[ACTION REQUIRED] New Booking Request Awaiting Approval - ${service.name} (${patientName})`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px;">
+              <div style="background: #0f766e; padding: 16px; border-radius: 8px; color: white; text-align: center;">
+                <h2 style="margin: 0; font-size: 18px;">🔔 New Booking Request Awaiting Approval</h2>
+                <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">${pharmacy.name}</p>
+              </div>
+              
+              <p style="margin-top: 20px; font-size: 14px;">Hello <strong>${pharmacy.name} Team</strong>,</p>
+              <p style="font-size: 13px;">A new appointment request has been submitted by a patient and is awaiting your review and confirmation.</p>
+
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; background: #f1f5f9; border-radius: 8px; padding: 12px;">
+                <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Patient:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientName}</td></tr>
+                <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Service:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f766e;">${service.name}</td></tr>
+                <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Reference:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${referenceCode}</td></tr>
+                <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Phone:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientPhone}</td></tr>
+                <tr><td style="padding: 6px 12px; font-weight: bold; color: #64748b;">Email:</td><td style="padding: 6px 12px; font-weight: bold; color: #0f172a;">${patientEmail}</td></tr>
+              </table>
+
+              <div style="text-align: center; margin-top: 24px;">
+                <a href="${portalUrl}" style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">
+                  Review & Accept Booking in Portal &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+        `;
+        const { sendEmail } = await import("@/lib/email");
+        await sendEmail({ to: pharmacy.email, subject, html });
+      } catch (pharmErr) {
+        console.warn("⚠️ Failed to send pharmacy awaiting email:", pharmErr);
+      }
     }
 
     // 6. Clean up OTP codes for this email

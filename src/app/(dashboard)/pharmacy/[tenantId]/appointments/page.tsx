@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getRequiredSession } from "@/lib/session";
-import { AppointmentsTable } from "./appointments-table";
-import { H1, P } from "@/components/ui/typography";
+import { AppointmentsView } from "./appointments-view";
 
 interface PharmacyAppointmentsPageProps {
   params: {
@@ -10,25 +9,42 @@ interface PharmacyAppointmentsPageProps {
   };
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyAppointmentsPage({ params }: PharmacyAppointmentsPageProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
+
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
+  });
+
+  if (!pharmacy) {
+    notFound();
+  }
 
   // Tenant Boundary Isolation Guard
   const isTenantUser = session.user.role === "pharmacy";
   const isPlatformAdmin =
     session.user.role === "super_admin" || session.user.role === "platform_admin";
 
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
     redirect("/");
   }
   if (!isTenantUser && !isPlatformAdmin) {
     redirect("/");
   }
 
+  const pharmacyId = pharmacy.id;
+
   // Load all appointments with patient details and service specs
   const appointments = await db.appointment.findMany({
     where: {
-      pharmacyId: params.tenantId,
+      pharmacyId,
     },
     include: {
       customer: true,
@@ -39,33 +55,10 @@ export default async function PharmacyAppointmentsPage({ params }: PharmacyAppoi
     },
   });
 
-  // Load audit logs representing changes of the appointments
-  const auditLogs = await db.auditLog.findMany({
-    where: {
-      pharmacyId: params.tenantId,
-      entityName: { in: ["Appointment", "AppointmentBulk"] },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 30,
-  });
-
   return (
-    <div className="select-text space-y-6">
-      <div>
-        <H1>Appointment Manager</H1>
-        <P className="mt-1">
-          Review, approve, confirm, reject, cancel, or reschedule clinical appointments. Add booking
-          notes and inspect audit trails.
-        </P>
-      </div>
-
-      <AppointmentsTable
-        pharmacyId={params.tenantId}
-        appointments={appointments}
-        auditLogs={auditLogs}
-      />
-    </div>
+    <AppointmentsView
+      pharmacyId={pharmacy.slug || pharmacyId}
+      appointments={JSON.parse(JSON.stringify(appointments))}
+    />
   );
 }

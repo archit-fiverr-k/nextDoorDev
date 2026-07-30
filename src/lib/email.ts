@@ -110,6 +110,108 @@ export async function sendBookingConfirmationEmail(
   });
 }
 
+export async function sendBookingReservationEmail(
+  email: string,
+  details: {
+    patientName: string;
+    branchName: string;
+    serviceName: string;
+    startTime: Date;
+    bookingId: string;
+  }
+) {
+  const formattedTime = new Date(details.startTime).toLocaleString("en-GB", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const { subject, html } = await getRenderedTemplate("BOOKING_RESERVATION", {
+    patientName: details.patientName,
+    providerName: details.branchName,
+    serviceName: details.serviceName,
+    formattedTime,
+    bookingId: details.bookingId,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+}
+
+export async function sendBookingRescheduledEmail(
+  email: string,
+  details: {
+    patientName: string;
+    branchName: string;
+    serviceName: string;
+    startTime: Date;
+    bookingId: string;
+  }
+) {
+  const formattedTime = new Date(details.startTime).toLocaleString("en-GB", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const { subject, html } = await getRenderedTemplate("BOOKING_RESCHEDULED", {
+    patientName: details.patientName,
+    providerName: details.branchName,
+    serviceName: details.serviceName,
+    formattedTime,
+    bookingId: details.bookingId,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+}
+
+export async function sendBookingCancellationEmail(
+  email: string,
+  details: {
+    patientName: string;
+    branchName: string;
+    serviceName: string;
+    startTime: Date;
+    bookingId: string;
+  }
+) {
+  const formattedTime = new Date(details.startTime).toLocaleString("en-GB", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const { subject, html } = await getRenderedTemplate("BOOKING_CANCELLATION", {
+    patientName: details.patientName,
+    providerName: details.branchName,
+    serviceName: details.serviceName,
+    formattedTime,
+    bookingId: details.bookingId,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+}
+
 export async function sendBookingNotificationEmail(
   email: string,
   details: {
@@ -273,41 +375,13 @@ export async function sendPlatformAdminCredentialsEmail(
 }
 
 export async function sendPatientWelcomeEmail(email: string, details: { patientName: string }) {
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
-        <img src="${env.NEXT_PUBLIC_APP_URL}/assets/header-logo.png" alt="NextDoorClinic" style="height: 40px; object-fit: contain;" />
-      </div>
-      <h2 style="color: #0f172a; margin-top: 24px; margin-bottom: 16px;">Welcome to NextDoorClinic!</h2>
-      <p style="color: #475569; font-size: 14px; line-height: 24px;">
-        Hi ${details.patientName},
-      </p>
-      <p style="color: #475569; font-size: 14px; line-height: 24px;">
-        Thank you for booking with NextDoorClinic. We have automatically created a patient portal account for you to manage this and all future appointments.
-      </p>
-      <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 24px 0; font-size: 14px; color: #334155; line-height: 22px;">
-        <strong>With your patient portal account, you can:</strong>
-        <ul style="margin: 8px 0 0 0; padding-left: 20px;">
-          <li>View and manage your active bookings</li>
-          <li>Receive automated appointment reminders</li>
-          <li>Access secure CQC-compliant doctor consultations</li>
-          <li>Book treatments faster next time</li>
-        </ul>
-      </div>
-      <p style="color: #475569; font-size: 14px; line-height: 24px;">
-        You can access your patient portal at any time by logging in with your email address.
-      </p>
-      <div style="text-align: center; margin-top: 28px;">
-        <a href="${env.NEXT_PUBLIC_APP_URL}/login" style="background-color: #10B981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">Go to Patient Portal</a>
-      </div>
-      <p style="color: #94a3b8; font-size: 12px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center;">
-        &copy; ${new Date().getFullYear()} NextDoorClinic. All rights reserved.
-      </p>
-    </div>
-  `;
+  const { subject, html } = await getRenderedTemplate("PATIENT_WELCOME", {
+    patientName: details.patientName,
+  });
+
   return sendEmail({
     to: email,
-    subject: "Welcome to NextDoorClinic",
+    subject,
     html,
   });
 }

@@ -35,22 +35,37 @@ export default async function EmailTemplatesPage({ searchParams }: PageProps) {
     { name: "PROVIDER_APPROVAL", label: "Provider Approval", vars: "providerName, loginUrl" },
     { name: "PROVIDER_REJECTION", label: "Provider Rejection", vars: "providerName" },
     {
+      name: "BOOKING_RESERVATION",
+      label: "Booking Reservation",
+      vars: "patientName, providerName, serviceName, formattedTime, bookingId",
+    },
+    {
       name: "BOOKING_CONFIRMATION",
       label: "Booking Confirmation",
       vars: "patientName, providerName, serviceName, formattedTime, bookingId",
     },
     {
-      name: "BOOKING_REMINDER",
-      label: "Booking Reminder",
-      vars: "patientName, serviceName, formattedTime, providerName",
+      name: "BOOKING_RESCHEDULED",
+      label: "Booking Rescheduled",
+      vars: "patientName, providerName, serviceName, formattedTime, bookingId",
     },
     {
       name: "BOOKING_CANCELLATION",
       label: "Booking Cancellation",
-      vars: "patientName, serviceName, formattedTime, providerName",
+      vars: "patientName, providerName, serviceName, formattedTime, bookingId",
+    },
+    {
+      name: "BOOKING_REMINDER",
+      label: "Booking Reminder",
+      vars: "patientName, serviceName, formattedTime, providerName, bookingId",
     },
     { name: "PASSWORD_RESET", label: "Password Reset", vars: "userEmail, resetUrl" },
-    { name: "EMAIL_VERIFICATION", label: "Email Verification OTP", vars: "otp" },
+    { name: "EMAIL_VERIFICATION", label: "Email Verification OTP", vars: "otp, patientName" },
+    {
+      name: "PATIENT_WELCOME",
+      label: "Patient Welcome & Promotion",
+      vars: "patientName",
+    },
     {
       name: "SUBSCRIPTION_RENEWAL",
       label: "Subscription Renewal Alert",
@@ -70,9 +85,9 @@ export default async function EmailTemplatesPage({ searchParams }: PageProps) {
 
   const isOldCardLayout =
     template &&
-    (!template.body.includes("max-width: 640px") ||
-      !template.body.includes("RECOMMENDED HEALTHCARE SERVICES") ||
-      template.body.includes("Transforming Primary Care Access"));
+    (!template.body.includes("max-width: 620px") ||
+      !template.body.includes("Important Patient Guidance:") ||
+      !template.body.includes("APPOINTMENT SUMMARY"));
 
   if (!template) {
     const defaultMeta = templateList.find((t) => t.name === selectedName);

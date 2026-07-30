@@ -65,7 +65,7 @@ interface PharmacyProfileFormProps {
 
 export function ProfileForm({ pharmacy }: PharmacyProfileFormProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"info" | "brand" | "seo" | "preview">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "brand" | "preview">("info");
   const [isPending, startTransition] = useTransition();
 
   // Success / Error status messages
@@ -271,17 +271,6 @@ export function ProfileForm({ pharmacy }: PharmacyProfileFormProps) {
             )}
           >
             Branding & Gallery
-          </button>
-          <button
-            onClick={() => setActiveTab("seo")}
-            className={cn(
-              "flex-1 rounded-xl py-2 transition-all",
-              activeTab === "seo"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "hover:bg-slate-50 hover:text-slate-900"
-            )}
-          >
-            SEO Settings
           </button>
           <button
             onClick={() => setActiveTab("preview")}
@@ -616,51 +605,7 @@ export function ProfileForm({ pharmacy }: PharmacyProfileFormProps) {
             </div>
           )}
 
-          {/* TAB 3: SEO Configuration */}
-          {activeTab === "seo" && (
-            <div className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
-              <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400">
-                SEO Custom Metadata
-              </h3>
-
-              <div className="space-y-4 pt-1">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                    Custom SEO Meta Title
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.seoTitle}
-                    onChange={(e) => handleFieldChange("seoTitle", e.target.value)}
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3.5 text-xs font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
-                    placeholder="e.g. Best Community Pharmacy in Manchester | Northside"
-                  />
-                  <span className="block text-[9px] font-medium text-slate-400">
-                    Recommended length: 50-60 characters. Shows up in browser tabs and search
-                    engines.
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                    Custom SEO Meta Description
-                  </label>
-                  <textarea
-                    value={formData.seoDescription}
-                    onChange={(e) => handleFieldChange("seoDescription", e.target.value)}
-                    className="h-24 w-full resize-none rounded-xl border border-slate-200 p-3.5 text-xs font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
-                    placeholder="Provide a compelling snippet description..."
-                  />
-                  <span className="block text-[9px] font-medium text-slate-400">
-                    Recommended length: 150-160 characters. Summarizes the clinic for search results
-                    pages.
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Mobile hours/preview sub-toggle (only visible on mobile layout) */}
+          {/* TAB 3: Mobile hours/preview sub-toggle (only visible on mobile layout) */}
           {activeTab === "preview" && (
             <div className="block space-y-6 lg:hidden">
               <BookingWizardPreview

@@ -38,7 +38,7 @@ async function dispatchStatusNotification(
     });
 
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const manageUrl = `${appBaseUrl}/patient/appointments/${app.id}`;
+    const manageUrl = `${appBaseUrl}/b/${referenceCode}`;
 
     if (action === "CONFIRMED") {
       // 1. Email

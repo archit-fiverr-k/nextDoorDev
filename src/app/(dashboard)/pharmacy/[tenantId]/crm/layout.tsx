@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getRequiredSession } from "@/lib/session";
 import { CRMSidebar } from "./crm-sidebar";
 import { H1, P } from "@/components/ui/typography";
@@ -13,25 +13,42 @@ interface CRMLayoutProps {
   children: React.ReactNode;
 }
 
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
+
 export default async function PharmacyCRMLayout({ params, children }: CRMLayoutProps) {
   const session = await getRequiredSession();
+  const isParamUuid = isUuid(params.tenantId);
+
+  const pharmacy = await db.pharmacy.findFirst({
+    where: isParamUuid
+      ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
+      : { slug: params.tenantId },
+  });
+
+  if (!pharmacy) {
+    notFound();
+  }
 
   // Tenant Boundary Guard
   const isTenantUser = session.user.role === "pharmacy";
   const isPlatformAdmin =
     session.user.role === "super_admin" || session.user.role === "platform_admin";
 
-  if (isTenantUser && session.user.pharmacyId !== params.tenantId) {
+  if (isTenantUser && session.user.pharmacyId !== pharmacy.id) {
     redirect("/");
   }
   if (!isTenantUser && !isPlatformAdmin) {
     redirect("/");
   }
 
+  const pharmacyId = pharmacy.id;
+
   // Load all customers with appointment counts
   const customers = await db.customer.findMany({
     where: {
-      pharmacyId: params.tenantId,
+      pharmacyId,
     },
     select: {
       id: true,
@@ -63,7 +80,7 @@ export default async function PharmacyCRMLayout({ params, children }: CRMLayoutP
       <div className="shadow-premium grid min-h-[600px] grid-cols-1 gap-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-zinc-800/80 dark:bg-zinc-950 lg:grid-cols-12">
         {/* Left Side: Search and List */}
         <div className="border-b border-slate-200/80 dark:border-zinc-800/80 lg:col-span-4 lg:border-b-0 lg:border-r">
-          <CRMSidebar tenantId={params.tenantId} customers={customers} />
+          <CRMSidebar tenantId={pharmacy.slug || pharmacyId} customers={customers} />
         </div>
 
         {/* Right Side: detail view */}
