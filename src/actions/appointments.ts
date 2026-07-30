@@ -156,6 +156,36 @@ export async function updateAppointmentStatusAction(
       return { success: false, error: "Unauthorized access" };
     }
 
+    // RULE 1: Pharmacy staff cannot cancel an appointment after confirming it
+    if (
+      isTenantUser &&
+      app.status === "CONFIRMED" &&
+      (status === "CANCELLED" || status === "REJECTED")
+    ) {
+      return {
+        success: false,
+        error: "Confirmed appointments cannot be cancelled by pharmacy staff.",
+      };
+    }
+
+    // RULE 2: Appointment can ONLY be marked as COMPLETED after the scheduled start time
+    if (status === "COMPLETED") {
+      const now = new Date();
+      const appStart = new Date(app.startTime);
+      if (now < appStart) {
+        const formattedStart = appStart.toLocaleString("en-GB", {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return {
+          success: false,
+          error: `Appointments can only be marked as completed after the scheduled start time (${formattedStart}).`,
+        };
+      }
+    }
+
     const updated = await db.appointment.update({
       where: { id: appointmentId },
       data: { status },
@@ -335,6 +365,35 @@ export async function bulkUpdateAppointmentStatusAction(
   }
 
   try {
+    const targetApps = await db.appointment.findMany({
+      where: {
+        id: { in: appointmentIds },
+        pharmacyId,
+      },
+    });
+
+    // RULE 1: Cannot bulk cancel confirmed appointments
+    if (isTenantUser && (status === "CANCELLED" || status === "REJECTED")) {
+      const hasConfirmed = targetApps.some((a) => a.status === "CONFIRMED");
+      if (hasConfirmed) {
+        return {
+          success: false,
+          error: "Confirmed appointments cannot be cancelled by pharmacy staff.",
+        };
+      }
+    }
+
+    // RULE 2: Cannot bulk mark completed before start time
+    if (status === "COMPLETED") {
+      const now = new Date();
+      const hasFutureApp = targetApps.some((a) => now < new Date(a.startTime));
+      if (hasFutureApp) {
+        return {
+          success: false,
+          error: "Appointments can only be marked as completed after their scheduled start time.",
+        };
+      }
+    }
     await db.appointment.updateMany({
       where: {
         id: { in: appointmentIds },

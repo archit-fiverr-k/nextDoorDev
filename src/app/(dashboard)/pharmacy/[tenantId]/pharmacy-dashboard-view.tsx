@@ -20,6 +20,7 @@ import {
   ChevronRight,
   AlertCircle,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import { updateAppointmentStatusAction } from "@/actions/appointments";
 import { AppointmentDrawer } from "./appointments/appointment-drawer";
@@ -291,19 +292,40 @@ export function PharmacyDashboardView({
                   </div>
 
                   <div className="flex shrink-0 items-center space-x-2 self-end sm:self-center">
-                    {app.status === "CONFIRMED" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStatusUpdate(app.id, "COMPLETED");
-                        }}
-                        disabled={isUpdating === app.id}
-                        className="shadow-xs flex min-h-[34px] items-center space-x-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-extrabold text-white transition-all hover:bg-blue-700 active:scale-95 disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Mark Completed</span>
-                      </button>
-                    )}
+                    {app.status === "CONFIRMED" &&
+                      (() => {
+                        const canComplete = new Date() >= new Date(app.startTime);
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (canComplete) handleStatusUpdate(app.id, "COMPLETED");
+                            }}
+                            disabled={isUpdating === app.id || !canComplete}
+                            title={
+                              canComplete
+                                ? "Mark appointment completed"
+                                : `Available after appointment start time (${format(new Date(app.startTime), "d MMM, HH:mm")})`
+                            }
+                            className={`shadow-xs flex min-h-[34px] items-center space-x-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all ${
+                              canComplete
+                                ? "cursor-pointer bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
+                                : "cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500"
+                            }`}
+                          >
+                            {canComplete ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5" />
+                            )}
+                            <span>
+                              {canComplete
+                                ? "Mark Completed"
+                                : `Starts ${format(new Date(app.startTime), "HH:mm")}`}
+                            </span>
+                          </button>
+                        );
+                      })()}
 
                     {app.status === "PENDING" && (
                       <button

@@ -16,6 +16,7 @@ import {
   AlertCircle,
   MapPin,
   Send,
+  Lock,
 } from "lucide-react";
 import { rescheduleAppointmentAction } from "@/actions/appointments";
 
@@ -126,31 +127,55 @@ export function AppointmentDrawer({
               {/* Status Actions */}
               <div className="flex items-center space-x-2">
                 {appointment.status === "PENDING" && (
-                  <button
-                    onClick={() => onUpdateStatus(appointment.id, "CONFIRMED")}
-                    className="shadow-xs rounded-lg bg-[#10B981] px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-emerald-600"
-                  >
-                    Approve
-                  </button>
+                  <>
+                    <button
+                      onClick={() => onUpdateStatus(appointment.id, "CONFIRMED")}
+                      className="shadow-xs rounded-lg bg-[#10B981] px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-emerald-600"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => onUpdateStatus(appointment.id, "REJECTED")}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-rose-600 transition-all hover:bg-rose-50 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      Decline
+                    </button>
+                  </>
                 )}
 
-                {appointment.status === "CONFIRMED" && (
-                  <button
-                    onClick={() => onUpdateStatus(appointment.id, "COMPLETED")}
-                    className="shadow-xs rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-slate-800 dark:bg-white dark:text-slate-900"
-                  >
-                    Mark Complete
-                  </button>
-                )}
-
-                {appointment.status !== "CANCELLED" && appointment.status !== "REJECTED" && (
-                  <button
-                    onClick={() => onUpdateStatus(appointment.id, "CANCELLED")}
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-rose-600 transition-all hover:bg-rose-50 dark:border-zinc-800 dark:bg-zinc-900"
-                  >
-                    Cancel
-                  </button>
-                )}
+                {appointment.status === "CONFIRMED" &&
+                  (() => {
+                    const canComplete = new Date() >= new Date(appointment.startTime);
+                    return (
+                      <button
+                        onClick={() => {
+                          if (canComplete) onUpdateStatus(appointment.id, "COMPLETED");
+                        }}
+                        disabled={!canComplete}
+                        title={
+                          canComplete
+                            ? "Mark appointment completed"
+                            : `Available after appointment start time (${format(new Date(appointment.startTime), "d MMM, HH:mm")})`
+                        }
+                        className={`shadow-xs flex items-center space-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                          canComplete
+                            ? "cursor-pointer bg-blue-600 text-white hover:bg-blue-700"
+                            : "cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500"
+                        }`}
+                      >
+                        {canComplete ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Lock className="h-3.5 w-3.5" />
+                        )}
+                        <span>
+                          {canComplete
+                            ? "Mark Complete"
+                            : `Starts ${format(new Date(appointment.startTime), "HH:mm")}`}
+                        </span>
+                      </button>
+                    );
+                  })()}
               </div>
             </div>
 
