@@ -59,17 +59,27 @@ export default async function PharmacyStaffPage({ params }: PharmacyStaffPagePro
   });
 
   return (
-    <div className="select-text space-y-6">
-      <div>
-        <H1>Staff Roster & Permissions</H1>
-        <P className="mt-1">
-          Invite clinicians, receptionists, or branch managers, define roles, reset passwords, and
-          audit account access logs.
-        </P>
+    <div className="select-text space-y-8 font-sans text-slate-900 antialiased dark:text-zinc-50">
+      {/* Header Bar with Constrained Max-Width */}
+      <div className="border-b border-slate-200/80 pb-5 dark:border-zinc-800">
+        <div className="max-w-3xl space-y-1">
+          <div className="flex items-center space-x-2.5">
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+              Staff Roster & Permissions
+            </h1>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-[#10B981] dark:bg-emerald-950/60">
+              Access Control
+            </span>
+          </div>
+          <p className="text-xs font-medium leading-relaxed text-slate-500 dark:text-zinc-400">
+            Invite clinicians, receptionists, or branch managers, define role-based access control,
+            reset practitioner credentials, and audit security access logs.
+          </p>
+        </div>
       </div>
 
       <StaffTable
-        pharmacyId={pharmacy.slug || pharmacyId}
+        pharmacyId={pharmacyId}
         staff={staff}
         auditLogs={auditLogs}
         role={session.user.role as "super_admin" | "platform_admin" | "pharmacy"}

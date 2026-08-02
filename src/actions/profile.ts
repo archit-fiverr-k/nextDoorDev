@@ -151,6 +151,11 @@ export async function updateClinicProfileAction(formData: FormData) {
       return true;
     });
 
+    const minNoticeHoursStr = formData.get("minNoticeHours") as string | null;
+    const maxAdvanceDaysStr = formData.get("maxAdvanceDays") as string | null;
+    const minNoticeHours = minNoticeHoursStr ? parseInt(minNoticeHoursStr, 10) : undefined;
+    const maxAdvanceDays = maxAdvanceDaysStr ? parseInt(maxAdvanceDaysStr, 10) : undefined;
+
     // 3. Update Pharmacy Profile settings
     const updated = await db.pharmacy.update({
       where: { id: pharmacyId },
@@ -172,6 +177,8 @@ export async function updateClinicProfileAction(formData: FormData) {
         gallery: filteredGalleryUrls,
         seoTitle: seoTitle || null,
         seoDescription: seoDescription || null,
+        ...(minNoticeHours !== undefined && !isNaN(minNoticeHours) ? { minNoticeHours } : {}),
+        ...(maxAdvanceDays !== undefined && !isNaN(maxAdvanceDays) ? { maxAdvanceDays } : {}),
       },
     });
 

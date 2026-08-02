@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
   Calendar,
@@ -21,9 +22,12 @@ import {
   AlertCircle,
   Sparkles,
   Lock,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
 import { updateAppointmentStatusAction } from "@/actions/appointments";
 import { AppointmentDrawer } from "./appointments/appointment-drawer";
+import { FirstTimeOnboardingModal } from "@/components/pharmacy/first-time-onboarding-modal";
 
 interface PharmacyDashboardViewProps {
   pharmacy: {
@@ -32,7 +36,9 @@ interface PharmacyDashboardViewProps {
     slug?: string | null;
     phone?: string | null;
     email?: string | null;
+    logoUrl?: string | null;
   };
+  showFirstTimeSetup?: boolean;
   todayAppointments: any[];
   pendingAppointments: any[];
   upcomingAppointments: any[];
@@ -41,14 +47,17 @@ interface PharmacyDashboardViewProps {
 
 export function PharmacyDashboardView({
   pharmacy,
+  showFirstTimeSetup = false,
   todayAppointments,
   pendingAppointments,
   upcomingAppointments,
   publicBookingUrl,
 }: PharmacyDashboardViewProps) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(showFirstTimeSetup);
 
   // Time of day greeting
   const hour = new Date().getHours();
@@ -72,7 +81,7 @@ export function PharmacyDashboardView({
     setIsUpdating(id);
     try {
       await updateAppointmentStatusAction(id, status);
-      window.location.reload();
+      router.refresh();
     } catch (err) {
       console.error("Status update error:", err);
     } finally {
@@ -129,6 +138,54 @@ export function PharmacyDashboardView({
           >
             <Plus className="h-4 w-4" />
             <span>Book Appointment</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MOBILE DESKTOP NOTICE & ON-THE-GO QUICK HUB (Mobile < 768px View) */}
+      {/* ========================================================================= */}
+      <div className="block space-y-3 md:hidden">
+        {/* Desktop Recommendation Banner */}
+        <div className="shadow-2xs rounded-2xl border border-blue-200 bg-blue-50/90 p-4 dark:border-blue-900/60 dark:bg-blue-950/40">
+          <div className="flex items-start space-x-3">
+            <div className="shadow-xs flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+              <Monitor className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-blue-950 dark:text-blue-200">
+                  Desktop Recommended
+                </h3>
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-extrabold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                  Pro Tip
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed text-blue-900/80 dark:text-blue-300">
+                For complete clinical workflows, analytics reporting, and full settings, please open
+                your portal on a desktop or tablet. Use quick actions below to approve, decline, and
+                reschedule bookings on the go.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Quick On-The-Go Buttons */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href={`/pharmacy/${pharmacy.id}/appointments?status=PENDING`}
+            className="shadow-2xs flex items-center justify-center space-x-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs font-extrabold text-amber-900 active:scale-95 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
+          >
+            <Clock className="h-4 w-4 text-amber-600" />
+            <span>Pending ({pendingAppointments.length})</span>
+          </Link>
+
+          <Link
+            href={`/pharmacy/${pharmacy.id}/appointments`}
+            className="shadow-2xs flex items-center justify-center space-x-2 rounded-xl border border-slate-200 bg-white p-3 text-center text-xs font-extrabold text-slate-800 active:scale-95 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+          >
+            <Calendar className="h-4 w-4 text-[#10B981]" />
+            <span>All Bookings</span>
           </Link>
         </div>
       </div>
@@ -461,6 +518,19 @@ export function PharmacyDashboardView({
           onUpdateStatus={handleStatusUpdate}
         />
       )}
+
+      {/* First-Time Pharmacy Setup Wizard Modal */}
+      <FirstTimeOnboardingModal
+        pharmacy={{
+          id: pharmacy.id,
+          name: pharmacy.name,
+          email: pharmacy.email || "",
+          phone: pharmacy.phone || "",
+          logoUrl: pharmacy.logoUrl,
+        }}
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+      />
     </div>
   );
 }

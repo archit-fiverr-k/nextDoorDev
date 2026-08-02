@@ -4,8 +4,11 @@ import React, { useState, useTransition, useEffect, useRef, useMemo } from "reac
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { localDateTimeToUTC } from "@/lib/timezone";
+import { formatErrorMessage } from "@/lib/error-utils";
 import {
   createBookingDirectAction,
+  getAvailableSlotsAction,
   sendBookingOtpAction,
   verifyOtpAndCompleteBookingAction,
 } from "@/actions/booking";
@@ -74,6 +77,8 @@ interface BookingWizardProps {
     phone: string;
     description?: string | null;
     welcomeMessage?: string | null;
+    availability?: { dayOfWeek: number; openTime: string; closeTime: string }[];
+    blockedDates?: { date: string; reason?: string | null }[];
   };
   services: Service[];
   categories?: CategoryItem[];
@@ -191,32 +196,114 @@ export function BookingWizard({
     return () => clearInterval(interval);
   }, [otpSent, resendTimer]);
 
-  // Available time slots
-  const timeSlots = useMemo(() => {
-    return [
-      { time: "09:00", label: "09:00 AM", group: "Morning", badge: "Earliest" },
-      { time: "09:30", label: "09:30 AM", group: "Morning" },
-      { time: "10:00", label: "10:00 AM", group: "Morning", badge: "Most Popular" },
-      { time: "10:30", label: "10:30 AM", group: "Morning" },
-      { time: "11:00", label: "11:00 AM", group: "Morning" },
-      { time: "11:30", label: "11:30 AM", group: "Morning" },
-      { time: "12:30", label: "12:30 PM", group: "Afternoon" },
-      { time: "13:00", label: "01:00 PM", group: "Afternoon" },
-      { time: "14:00", label: "02:00 PM", group: "Afternoon", badge: "Next Available" },
-      { time: "14:30", label: "02:30 PM", group: "Afternoon" },
-      { time: "15:30", label: "03:30 PM", group: "Afternoon" },
-      { time: "16:00", label: "04:00 PM", group: "Afternoon" },
-      { time: "17:00", label: "05:00 PM", group: "Evening" },
-      { time: "17:30", label: "05:30 PM", group: "Evening" },
-    ];
-  }, []);
+  // Dynamic Real-Time Slot Fetching state
+  const [availableSlots, setAvailableSlots] = useState<
+    {
+      time: string;
+      label: string;
+      group: string;
+      isAvailable: boolean;
+      reason?: string;
+      badge?: string;
+    }[]
+  >([]);
+  const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
 
-  const morningSlots = useMemo(() => timeSlots.filter((s) => s.group === "Morning"), [timeSlots]);
-  const afternoonSlots = useMemo(
-    () => timeSlots.filter((s) => s.group === "Afternoon"),
-    [timeSlots]
+  // Clinic Schedule & Off-Day Helper
+  const getClinicDateStatus = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const dayOfWeek = date.getDay();
+
+    const isBlocked = (pharmacy.blockedDates || []).some((b: any) => {
+      const bStr =
+        typeof b.date === "string" ? b.date.split("T")[0] : format(new Date(b.date), "yyyy-MM-dd");
+      return bStr === dateStr;
+    });
+
+    const avail = (pharmacy.availability || []).find((a: any) => a.dayOfWeek === dayOfWeek);
+    const isClosed = !avail;
+
+    return {
+      isClosed,
+      isBlocked,
+      openTime: avail?.openTime,
+      closeTime: avail?.closeTime,
+    };
+  };
+
+  useEffect(() => {
+    if (!selectedService || !pharmacy?.id) return;
+
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    let isCancelled = false;
+    setLoadingSlots(true);
+
+    getAvailableSlotsAction(pharmacy.id, selectedService.id, dateStr, "Europe/London")
+      .then((res) => {
+        if (isCancelled) return;
+        if (res.success && Array.isArray(res.slots)) {
+          const mapped = res.slots.map((s: any, idx: number) => {
+            const timeStr = s.formattedTime || format(new Date(s.startTime), "HH:mm");
+            const dateObj = new Date(s.startTime);
+            const hour = dateObj.getHours();
+            const formattedLabel = format(dateObj, "hh:mm a");
+            const group = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
+            const isAvailable = s.isAvailable !== false;
+            const badge = !isAvailable
+              ? s.reason === "BOOKED"
+                ? "Booked"
+                : "Unavailable"
+              : idx === 0
+                ? "Earliest"
+                : idx === 2
+                  ? "Most Popular"
+                  : undefined;
+            return {
+              time: timeStr,
+              label: formattedLabel,
+              group,
+              isAvailable,
+              reason: s.reason,
+              badge,
+            };
+          });
+          setAvailableSlots(mapped);
+
+          const firstAvail = mapped.find((m: any) => m.isAvailable);
+          if (
+            firstAvail &&
+            (!selectedTime || !mapped.some((m: any) => m.time === selectedTime && m.isAvailable))
+          ) {
+            setSelectedTime(firstAvail.time);
+          }
+        } else {
+          setAvailableSlots([]);
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingSlots(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [pharmacy?.id, selectedService?.id, selectedDate]);
+
+  const morningSlots = useMemo(
+    () => availableSlots.filter((s) => s.group === "Morning"),
+    [availableSlots]
   );
-  const eveningSlots = useMemo(() => timeSlots.filter((s) => s.group === "Evening"), [timeSlots]);
+  const afternoonSlots = useMemo(
+    () => availableSlots.filter((s) => s.group === "Afternoon"),
+    [availableSlots]
+  );
+  const eveningSlots = useMemo(
+    () => availableSlots.filter((s) => s.group === "Evening"),
+    [availableSlots]
+  );
 
   // Handle OTP digit inputs
   const handleOtpDigitChange = (index: number, value: string) => {
@@ -241,13 +328,11 @@ export function BookingWizard({
     }
   };
 
-  // Construct ISO start time
+  // Construct ISO start time in pharmacy timezone (Europe/London)
   const getStartTimeISO = () => {
     const formattedDate = format(selectedDate, "yyyy-MM-dd");
-    const [hrs, mins] = (selectedTime || "09:00").split(":");
-    const d = new Date(selectedDate);
-    d.setHours(parseInt(hrs, 10), parseInt(mins, 10), 0, 0);
-    return d.toISOString();
+    const timeStr = selectedTime || "09:00";
+    return localDateTimeToUTC(formattedDate, timeStr, "Europe/London").toISOString();
   };
 
   // Submit Booking & Send OTP
@@ -299,7 +384,7 @@ export function BookingWizard({
       });
       setCurrentStep(5);
     } else {
-      setErrorMsg(res.error || "Failed to complete appointment booking.");
+      setErrorMsg(formatErrorMessage(res.error));
     }
   };
 
@@ -337,7 +422,7 @@ export function BookingWizard({
         });
         setCurrentStep(5);
       } else {
-        setOtpError(res.error || "Invalid verification code. Please check and try again.");
+        setOtpError(formatErrorMessage(res.error));
       }
     });
   };
@@ -588,62 +673,56 @@ export function BookingWizard({
                   </label>
 
                   <div className="scrollbar-none flex snap-x snap-mandatory items-center space-x-2.5 overflow-x-auto pb-2">
-                    {[
-                      {
-                        label: "Today",
-                        sub: format(new Date(), "d MMM"),
-                        date: new Date(),
-                        badge: "Earliest",
-                      },
-                      {
-                        label: "Tomorrow",
-                        sub: format(addDays(new Date(), 1), "d MMM"),
-                        date: addDays(new Date(), 1),
-                        badge: "Popular",
-                      },
-                      {
-                        label: format(addDays(new Date(), 2), "EEE"),
-                        sub: format(addDays(new Date(), 2), "d MMM"),
-                        date: addDays(new Date(), 2),
-                      },
-                      {
-                        label: format(addDays(new Date(), 3), "EEE"),
-                        sub: format(addDays(new Date(), 3), "d MMM"),
-                        date: addDays(new Date(), 3),
-                      },
-                      {
-                        label: format(addDays(new Date(), 4), "EEE"),
-                        sub: format(addDays(new Date(), 4), "d MMM"),
-                        date: addDays(new Date(), 4),
-                      },
-                      {
-                        label: format(addDays(new Date(), 5), "EEE"),
-                        sub: format(addDays(new Date(), 5), "d MMM"),
-                        date: addDays(new Date(), 5),
-                      },
-                      {
-                        label: format(addDays(new Date(), 6), "EEE"),
-                        sub: format(addDays(new Date(), 6), "d MMM"),
-                        date: addDays(new Date(), 6),
-                      },
-                    ].map((item, idx) => {
-                      const isSel = isSameDay(selectedDate, item.date);
+                    {Array.from({ length: 14 }).map((_, idx) => {
+                      const dateObj = addDays(new Date(), idx);
+                      const isSel = isSameDay(selectedDate, dateObj);
+                      const status = getClinicDateStatus(dateObj);
+                      const isTodayDate = isToday(dateObj);
+                      const isTomorrowDate = isTomorrow(dateObj);
+
+                      const dateLabel = isTodayDate
+                        ? "Today"
+                        : isTomorrowDate
+                          ? "Tomorrow"
+                          : format(dateObj, "EEE");
+                      const dateSub = format(dateObj, "d MMM");
+
+                      const badgeText = status.isBlocked
+                        ? "Off Day"
+                        : status.isClosed
+                          ? "Closed"
+                          : isTodayDate
+                            ? "Earliest"
+                            : isTomorrowDate
+                              ? "Popular"
+                              : undefined;
+
                       return (
                         <button
                           key={idx}
                           type="button"
-                          onClick={() => setSelectedDate(item.date)}
-                          className={`relative flex min-h-[56px] min-w-[90px] snap-center flex-col items-center justify-center rounded-2xl px-4 py-3 transition-all ${
+                          onClick={() => setSelectedDate(dateObj)}
+                          className={`relative flex min-h-[60px] min-w-[95px] snap-center flex-col items-center justify-center rounded-2xl px-4 py-3 transition-all ${
                             isSel
                               ? "bg-slate-900 text-white shadow-md dark:bg-white dark:text-slate-900"
-                              : "border border-slate-200/90 bg-white text-slate-700 hover:border-[#10B981] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+                              : status.isBlocked || status.isClosed
+                                ? "border border-slate-200/60 bg-slate-100/60 text-slate-400 dark:border-zinc-800/60 dark:bg-zinc-900/40 dark:text-zinc-600"
+                                : "border border-slate-200/90 bg-white text-slate-700 hover:border-[#10B981] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
                           }`}
                         >
-                          <span className="text-xs font-extrabold">{item.label}</span>
-                          <span className="text-[10px] font-medium opacity-80">{item.sub}</span>
-                          {item.badge && (
-                            <span className="py-0.2 shadow-2xs absolute -top-2 rounded-full bg-[#10B981] px-1.5 text-[7px] font-extrabold uppercase text-white">
-                              {item.badge}
+                          <span className="text-xs font-extrabold">{dateLabel}</span>
+                          <span className="text-[10px] font-medium opacity-80">{dateSub}</span>
+                          {badgeText && (
+                            <span
+                              className={`py-0.2 shadow-2xs absolute -top-2 rounded-full px-1.5 text-[7px] font-extrabold uppercase text-white ${
+                                status.isBlocked
+                                  ? "bg-rose-500"
+                                  : status.isClosed
+                                    ? "bg-slate-400"
+                                    : "bg-[#10B981]"
+                              }`}
+                            >
+                              {badgeText}
                             </span>
                           )}
                         </button>
@@ -652,129 +731,202 @@ export function BookingWizard({
                   </div>
                 </div>
 
-                {/* Touch Grouped Time Slot Buttons (Min 52px Target) */}
-                <div className="space-y-5 pt-2">
-                  {/* Morning Slots */}
-                  {morningSlots.length > 0 && (
-                    <div className="space-y-2.5">
-                      <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Morning Slots
-                      </span>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        {morningSlots.map(
-                          (slot: {
-                            time: string;
-                            label: string;
-                            group: string;
-                            badge?: string;
-                          }) => {
-                            const isSel = selectedTime === slot.time;
+                {/* CLINIC OFF DAY / CLOSED WARNING BANNER */}
+                {(() => {
+                  const selStatus = getClinicDateStatus(selectedDate);
+                  if (selStatus.isBlocked || selStatus.isClosed) {
+                    return (
+                      <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-900/60 dark:bg-amber-950/40">
+                        <div className="flex items-center space-x-2 font-bold text-amber-900 dark:text-amber-200">
+                          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span>
+                            Clinic is {selStatus.isBlocked ? "Off / Blocked" : "Closed"} on{" "}
+                            {format(selectedDate, "EEEE, d MMMM yyyy")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-800 dark:text-amber-300">
+                          {selStatus.isBlocked
+                            ? "This clinic has marked this date as an off day. No appointments can be booked."
+                            : "This pharmacy is closed on this day of the week. Please select another date above."}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* REAL-TIME SLOT LOADING & SELECTION */}
+                {loadingSlots ? (
+                  <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-slate-200/80 bg-white p-8 dark:border-zinc-800 dark:bg-zinc-900">
+                    <Loader2 className="h-6 w-6 animate-spin text-[#10B981]" />
+                    <span className="text-xs font-bold text-slate-600 dark:text-zinc-400">
+                      Checking real-time slot availability for {format(selectedDate, "d MMM yyyy")}
+                      ...
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-5 pt-2">
+                    {!getClinicDateStatus(selectedDate).isClosed &&
+                      !getClinicDateStatus(selectedDate).isBlocked &&
+                      availableSlots.length === 0 && (
+                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6 text-center dark:border-zinc-800 dark:bg-zinc-900">
+                          <Clock className="mx-auto h-8 w-8 text-slate-400" />
+                          <div className="space-y-1">
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                              No slots available on {format(selectedDate, "EEEE, d MMMM")}
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-zinc-400">
+                              All time slots for this date are fully booked or unavailable.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Morning Slots */}
+                    {morningSlots.length > 0 && (
+                      <div className="space-y-2.5">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                          Morning Slots
+                        </span>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                          {morningSlots.map((slot) => {
+                            const isSel = selectedTime === slot.time && slot.isAvailable;
+                            const isDis = !slot.isAvailable;
                             return (
                               <button
                                 key={slot.time}
                                 type="button"
-                                onClick={() => setSelectedTime(slot.time)}
-                                className={`relative flex min-h-[52px] items-center justify-center rounded-2xl p-3 text-center transition-all ${
-                                  isSel
-                                    ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
-                                    : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
+                                disabled={isDis}
+                                onClick={() => {
+                                  if (!isDis) setSelectedTime(slot.time);
+                                }}
+                                className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-2xl p-3 text-center transition-all ${
+                                  isDis
+                                    ? "cursor-not-allowed border border-slate-200/60 bg-slate-100/70 text-slate-400 dark:border-zinc-800/60 dark:bg-zinc-900/40 dark:text-zinc-600"
+                                    : isSel
+                                      ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
+                                      : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
                                 }`}
                               >
-                                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                <span
+                                  className={`text-xs font-extrabold ${
+                                    isDis
+                                      ? "line-through opacity-70"
+                                      : "text-slate-900 dark:text-white"
+                                  }`}
+                                >
                                   {slot.label}
                                 </span>
                                 {slot.badge && (
-                                  <span className="shadow-2xs absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#10B981] px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-white">
+                                  <span
+                                    className={`shadow-2xs absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-white ${
+                                      isDis ? "bg-slate-400 dark:bg-zinc-700" : "bg-[#10B981]"
+                                    }`}
+                                  >
                                     {slot.badge}
                                   </span>
                                 )}
                               </button>
                             );
-                          }
-                        )}
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Afternoon Slots */}
-                  {afternoonSlots.length > 0 && (
-                    <div className="space-y-2.5">
-                      <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Afternoon Slots
-                      </span>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        {afternoonSlots.map(
-                          (slot: {
-                            time: string;
-                            label: string;
-                            group: string;
-                            badge?: string;
-                          }) => {
-                            const isSel = selectedTime === slot.time;
+                    {/* Afternoon Slots */}
+                    {afternoonSlots.length > 0 && (
+                      <div className="space-y-2.5">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                          Afternoon Slots
+                        </span>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                          {afternoonSlots.map((slot) => {
+                            const isSel = selectedTime === slot.time && slot.isAvailable;
+                            const isDis = !slot.isAvailable;
                             return (
                               <button
                                 key={slot.time}
                                 type="button"
-                                onClick={() => setSelectedTime(slot.time)}
-                                className={`relative flex min-h-[52px] items-center justify-center rounded-2xl p-3 text-center transition-all ${
-                                  isSel
-                                    ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
-                                    : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
+                                disabled={isDis}
+                                onClick={() => {
+                                  if (!isDis) setSelectedTime(slot.time);
+                                }}
+                                className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-2xl p-3 text-center transition-all ${
+                                  isDis
+                                    ? "cursor-not-allowed border border-slate-200/60 bg-slate-100/70 text-slate-400 dark:border-zinc-800/60 dark:bg-zinc-900/40 dark:text-zinc-600"
+                                    : isSel
+                                      ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
+                                      : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
                                 }`}
                               >
-                                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                <span
+                                  className={`text-xs font-extrabold ${
+                                    isDis
+                                      ? "line-through opacity-70"
+                                      : "text-slate-900 dark:text-white"
+                                  }`}
+                                >
                                   {slot.label}
                                 </span>
                                 {slot.badge && (
-                                  <span className="shadow-2xs absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#10B981] px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-white">
+                                  <span
+                                    className={`shadow-2xs absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-white ${
+                                      isDis ? "bg-slate-400 dark:bg-zinc-700" : "bg-[#10B981]"
+                                    }`}
+                                  >
                                     {slot.badge}
                                   </span>
                                 )}
                               </button>
                             );
-                          }
-                        )}
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Evening Slots */}
-                  {eveningSlots.length > 0 && (
-                    <div className="space-y-2.5">
-                      <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Evening Slots
-                      </span>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        {eveningSlots.map(
-                          (slot: {
-                            time: string;
-                            label: string;
-                            group: string;
-                            badge?: string;
-                          }) => {
-                            const isSel = selectedTime === slot.time;
+                    {/* Evening Slots */}
+                    {eveningSlots.length > 0 && (
+                      <div className="space-y-2.5">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                          Evening Slots
+                        </span>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                          {eveningSlots.map((slot) => {
+                            const isSel = selectedTime === slot.time && slot.isAvailable;
+                            const isDis = !slot.isAvailable;
                             return (
                               <button
                                 key={slot.time}
                                 type="button"
-                                onClick={() => setSelectedTime(slot.time)}
-                                className={`relative flex min-h-[52px] items-center justify-center rounded-2xl p-3 text-center transition-all ${
-                                  isSel
-                                    ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
-                                    : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
+                                disabled={isDis}
+                                onClick={() => {
+                                  if (!isDis) setSelectedTime(slot.time);
+                                }}
+                                className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-2xl p-3 text-center transition-all ${
+                                  isDis
+                                    ? "cursor-not-allowed border border-slate-200/60 bg-slate-100/70 text-slate-400 dark:border-zinc-800/60 dark:bg-zinc-900/40 dark:text-zinc-600"
+                                    : isSel
+                                      ? "shadow-xs border-2 border-[#10B981] bg-emerald-50/70 dark:bg-emerald-950/40"
+                                      : "border border-slate-200/90 bg-white hover:border-[#10B981]/60 dark:border-zinc-800 dark:bg-zinc-900"
                                 }`}
                               >
-                                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                <span
+                                  className={`text-xs font-extrabold ${
+                                    isDis
+                                      ? "line-through opacity-70"
+                                      : "text-slate-900 dark:text-white"
+                                  }`}
+                                >
                                   {slot.label}
                                 </span>
                               </button>
                             );
-                          }
-                        )}
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Step 2 Desktop-Only Inline Action Button */}
                 <div className="hidden border-t border-slate-200/80 pt-6 dark:border-zinc-800 lg:block">
@@ -932,9 +1084,32 @@ export function BookingWizard({
                 </div>
 
                 {errorMsg && (
-                  <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
-                    {errorMsg}
-                  </p>
+                  <div
+                    role="alert"
+                    aria-live="assertive"
+                    className="flex flex-col justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/90 p-4 text-xs dark:border-rose-900/60 dark:bg-rose-950/40 sm:flex-row sm:items-center"
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <AlertCircle className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+                      <span className="font-bold text-rose-900 dark:text-rose-200">
+                        {errorMsg === "SLOT_TAKEN"
+                          ? "This time slot is no longer available. Please select another convenient time slot."
+                          : errorMsg}
+                      </span>
+                    </div>
+                    {(errorMsg === "SLOT_TAKEN" || errorMsg.includes("no longer available")) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg("");
+                          setCurrentStep(1);
+                        }}
+                        className="shadow-xs inline-flex shrink-0 items-center justify-center rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-extrabold text-white transition-all hover:bg-rose-700 active:scale-95"
+                      >
+                        Change Time Slot
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Booking Review Card */}
@@ -974,19 +1149,6 @@ export function BookingWizard({
                         {formValues.firstName} {formValues.lastName} ({formValues.mobile})
                       </span>
                     </div>
-                  </div>
-
-                  {/* What Happens Next Section */}
-                  <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
-                    <h4 className="flex items-center space-x-1.5 text-xs font-bold text-emerald-900 dark:text-emerald-300">
-                      <Sparkles className="h-4 w-4 text-[#10B981]" />
-                      <span>What happens next?</span>
-                    </h4>
-                    <ul className="list-inside list-disc space-y-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-400">
-                      <li>Instant SMS & WhatsApp confirmation sent to {formValues.mobile}.</li>
-                      <li>Free cancellation or reschedule up to 24 hours in advance.</li>
-                      <li>Arrive 5 minutes before your time slot. No waiting room delays.</li>
-                    </ul>
                   </div>
                 </div>
               </div>
@@ -1032,7 +1194,11 @@ export function BookingWizard({
                     ))}
                   </div>
 
-                  {otpError && <p className="text-xs font-bold text-rose-600">{otpError}</p>}
+                  {otpError && (
+                    <p role="alert" aria-live="polite" className="text-xs font-bold text-rose-600">
+                      {otpError}
+                    </p>
+                  )}
 
                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-zinc-400">
                     <button

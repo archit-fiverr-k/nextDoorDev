@@ -41,24 +41,27 @@ export default async function PharmacyAppointmentsPage({ params }: PharmacyAppoi
 
   const pharmacyId = pharmacy.id;
 
-  // Load all appointments with patient details and service specs
-  const appointments = await db.appointment.findMany({
-    where: {
-      pharmacyId,
-    },
-    include: {
-      customer: true,
-      service: true,
-    },
-    orderBy: {
-      startTime: "desc",
-    },
-  });
+  // Load all appointments and active services
+  const [appointments, services] = await Promise.all([
+    db.appointment.findMany({
+      where: { pharmacyId },
+      include: {
+        customer: true,
+        service: true,
+      },
+      orderBy: { startTime: "desc" },
+    }),
+    db.service.findMany({
+      where: { pharmacyId, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <AppointmentsView
-      pharmacyId={pharmacy.slug || pharmacyId}
+      pharmacyId={pharmacy.id}
       appointments={JSON.parse(JSON.stringify(appointments))}
+      services={JSON.parse(JSON.stringify(services))}
     />
   );
 }

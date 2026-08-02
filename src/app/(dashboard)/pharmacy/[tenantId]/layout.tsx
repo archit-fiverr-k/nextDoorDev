@@ -58,7 +58,7 @@ export default async function PharmacyLayout({
       {/* Impersonation Banner */}
       {session.user.isImpersonating && <ImpersonationBanner />}
 
-      {/* Top Header Navigation (No permanent left sidebar) */}
+      {/* Left Sidebar + Topbar Navigation Header */}
       <PharmacyHeader
         tenantId={pharmacy.slug || pharmacy.id}
         pharmacyName={pharmacy.name}
@@ -66,9 +66,9 @@ export default async function PharmacyLayout({
         user={user}
       />
 
-      {/* Full-Width Workspace Main Body */}
-      <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-8 p-4 sm:p-6 lg:p-8">
-        {children}
+      {/* Main Workspace Body (Offset by Sidebar Width on Desktop) */}
+      <main className="w-full flex-1 space-y-8 p-4 sm:p-6 lg:py-8 lg:pl-72 lg:pr-8">
+        <div className="mx-auto w-full max-w-[1400px]">{children}</div>
       </main>
     </div>
   );

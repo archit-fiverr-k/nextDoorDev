@@ -408,72 +408,35 @@ export async function GET(req: NextRequest) {
           return isApproved && hasActiveSub && subNotExpired;
         });
 
-        // Calculate availability counts and find earliest appointment today
+        // Fast schedule check without heavy slot engine loops
         let openTodayCount = 0;
-        let totalSlotsToday = 0;
-        let earliestAppointmentToday: Date | null = null;
-
         for (const p of activePharmacies) {
-          // Check if blocked today
           const isBlocked = p.blockedDates.some((b) => {
             return new Date(b.date).toLocaleDateString("en-CA") === todayStr;
           });
           if (isBlocked) continue;
 
-          // Check if open today
           const avail = p.availability.find((a) => a.dayOfWeek === dayOfWeek);
           if (avail) {
             openTodayCount++;
-
-            // Query slots today for earliest appointment calculation
-            for (const service of p.services) {
-              try {
-                const slots = await BookingEngine.getAvailableSlots(
-                  p.id,
-                  service.id,
-                  todayStr,
-                  "Europe/London"
-                );
-                totalSlotsToday += slots.length;
-
-                for (const slot of slots) {
-                  if (
-                    !earliestAppointmentToday ||
-                    slot.startTime.getTime() < earliestAppointmentToday.getTime()
-                  ) {
-                    earliestAppointmentToday = slot.startTime;
-                  }
-                }
-              } catch (e) {
-                console.error(`Error calculating slots for autocomplete:`, e);
-              }
-            }
           }
         }
 
-        // Determine status dot and status message based on calculations
+        // Fast status calculations
         let status: "green" | "yellow" | "red" | "grey" = "grey";
         let statusText = "No registered providers";
-        let earliestAppointmentText = "";
 
         if (localPharmacies.length === 0 || activePharmacies.length === 0) {
           status = "grey";
           statusText = "No registered pharmacies";
         } else {
           const activeCount = activePharmacies.length;
-          if (totalSlotsToday > 5) {
+          if (openTodayCount > 0) {
             status = "green";
             statusText = `${activeCount} ${activeCount === 1 ? "pharmacy" : "pharmacies"} available today`;
-          } else if (totalSlotsToday > 0 && totalSlotsToday <= 5) {
-            status = "yellow";
-            statusText = `Limited availability • ${activeCount} ${activeCount === 1 ? "pharmacy" : "pharmacies"} available`;
           } else {
-            status = "red";
-            statusText = "No appointments available today";
-          }
-
-          if (earliestAppointmentToday) {
-            earliestAppointmentText = formatEarliestTime(earliestAppointmentToday);
+            status = "yellow";
+            statusText = `${activeCount} ${activeCount === 1 ? "pharmacy" : "pharmacies"} registered`;
           }
         }
 
@@ -483,7 +446,6 @@ export async function GET(req: NextRequest) {
           count: activePharmacies.length,
           status,
           statusText,
-          earliestAppointment: earliestAppointmentText || undefined,
         });
       }
 

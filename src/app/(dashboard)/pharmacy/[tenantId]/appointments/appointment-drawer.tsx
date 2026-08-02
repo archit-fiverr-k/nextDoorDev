@@ -18,6 +18,7 @@ import {
   Send,
   Lock,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { rescheduleAppointmentAction } from "@/actions/appointments";
 
 interface AppointmentDrawerProps {
@@ -34,6 +35,7 @@ export function AppointmentDrawer({
   onClose,
   onUpdateStatus,
 }: AppointmentDrawerProps) {
+  const router = useRouter();
   const [isRescheduling, setIsRescheduling] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
@@ -65,7 +67,8 @@ export function AppointmentDrawer({
       );
 
       if (res.success) {
-        window.location.reload();
+        router.refresh();
+        onClose();
       } else {
         setRescheduleError(res.error || "Failed to reschedule appointment.");
       }

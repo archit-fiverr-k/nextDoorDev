@@ -21,7 +21,14 @@ interface BookingRow {
   id: string;
   startTime: Date;
   endTime: Date;
-  status: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "REJECTED" | "RESCHEDULE_REQUESTED";
+  status:
+    | "PENDING"
+    | "CONFIRMED"
+    | "COMPLETED"
+    | "CANCELLED"
+    | "REJECTED"
+    | "RESCHEDULE_REQUESTED"
+    | "NO_SHOW";
   notes: string | null;
   customerId: string;
   customer: {

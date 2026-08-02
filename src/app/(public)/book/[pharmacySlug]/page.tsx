@@ -69,6 +69,8 @@ export default async function PublicBookingPage({ params, searchParams }: Public
             where: { isActive: true },
             orderBy: { createdAt: "asc" },
           },
+          availability: true,
+          blockedDates: true,
         },
       }),
       db.category.findMany({
@@ -112,6 +114,11 @@ export default async function PublicBookingPage({ params, searchParams }: Public
     phone: pharmacy.phone,
     description: pharmacy.description,
     welcomeMessage: pharmacy.welcomeMessage,
+    availability: pharmacy.availability || [],
+    blockedDates: (pharmacy.blockedDates || []).map((b) => ({
+      date: b.date.toISOString(),
+      reason: b.reason,
+    })),
   };
 
   const sanitizedCategories = categories.map((c) => ({

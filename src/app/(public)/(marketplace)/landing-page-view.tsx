@@ -327,7 +327,7 @@ export function LandingPageView({ approvedProviders }: LandingPageViewProps) {
 
               {/* Search Bar Container */}
               <div className="relative z-30 w-full max-w-2xl">
-                <SearchBar className="rounded-2xl shadow-xl" />
+                <SearchBar />
               </div>
 
               {/* Quick Search Chips */}
@@ -874,6 +874,215 @@ export function LandingPageView({ approvedProviders }: LandingPageViewProps) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+      {/* ========================================================================= */}
+      {/* 9. B2B GROWTH PLATFORM SECTION: EVERYTHING YOUR PHARMACY NEEDS TO GROW */}
+      {/* ========================================================================= */}
+      <section className="dark:border-zinc-850 border-t border-slate-200/80 bg-slate-900 py-16 text-white">
+        <div className="mx-auto max-w-7xl space-y-12 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl space-y-3 text-center">
+            <span className="inline-flex items-center space-x-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/60 px-3.5 py-1 text-[11px] font-black uppercase tracking-widest text-[#10B981]">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Complete Digital Growth Platform for Independent UK Pharmacies</span>
+            </span>
+            <h2 className="text-3xl font-black text-white sm:text-4xl">
+              Everything Your Pharmacy Needs To Grow
+            </h2>
+            <p className="text-sm text-slate-300">
+              We are NOT just a booking software. NextDoorClinic gives your pharmacy a complete
+              digital presence designed to increase local Google visibility, generate more patient
+              bookings, and modernize your business.
+            </p>
+          </div>
+
+          {/* 12 Feature Cards Grid */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                title: "Dedicated Website",
+                desc: "Auto-generated website from profile (e.g. www.westendpharmacy.co.uk) with custom domain support. No developer needed.",
+                icon: "🌐",
+              },
+              {
+                title: "Local SEO & Auto-Indexing",
+                desc: "Fully optimized for Google with Schema.org JSON-LD, Meta Tags, XML Sitemap, and automatic local ranking structure.",
+                icon: "🚀",
+              },
+              {
+                title: "Online Booking System",
+                desc: "Real-time 24/7 availability slots, appointment management, counter walk-in POS, and instant slot locks.",
+                icon: "📅",
+              },
+              {
+                title: "Marketplace Exposure",
+                desc: "Automatic listing in NextDoorClinic Healthcare Directory, searchable by service, town, city, or postcode.",
+                icon: "🏥",
+              },
+              {
+                title: "Patient Portal",
+                desc: "Self-serve patient portal to view bookings, verify mobile number via OTP, receive reminders, and leave reviews.",
+                icon: "👤",
+              },
+              {
+                title: "Branded SMS Notifications",
+                desc: "Automated SMS confirmation, appointment reminders, OTP verification, rescheduling, and cancellation notices.",
+                icon: "📱",
+              },
+              {
+                title: "Branded Email Dispatches",
+                desc: "Custom branded HTML emails for booking confirmation, reminders, review requests, and patient notifications.",
+                icon: "📧",
+              },
+              {
+                title: "WhatsApp Notifications",
+                desc: "Professional WhatsApp dispatch for instant appointment confirmations and reminders.",
+                icon: "💬",
+              },
+              {
+                title: "Calendar & Staff Roster",
+                desc: "Multi-staff calendar management, blackout dates, custom service durations, and lead time controls.",
+                icon: "🗓️",
+              },
+              {
+                title: "Patient Reviews & Ratings",
+                desc: "Automated post-appointment review collection and star rating display to build local trust.",
+                icon: "⭐",
+              },
+              {
+                title: "Analytics & Revenue Insights",
+                desc: "Breakdown of online vs walk-in vs phone bookings, most popular clinical services, and patient growth metrics.",
+                icon: "📊",
+              },
+              {
+                title: "Secure Cloud Hosting",
+                desc: "Includes SSL security, continuous platform upgrades, 99.9% uptime, and dedicated pharmacy support.",
+                icon: "🔒",
+              },
+            ].map((feat, idx) => (
+              <div
+                key={idx}
+                className="space-y-3 rounded-3xl border border-slate-800 bg-slate-950/70 p-6 transition-all hover:border-[#10B981]/50 hover:bg-slate-950"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-xl text-white">
+                  {feat.icon}
+                </div>
+                <h3 className="text-base font-extrabold text-white">{feat.title}</h3>
+                <p className="text-xs leading-relaxed text-slate-400">{feat.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 10. COST & ROI COMPARISON SECTION */}
+      {/* ========================================================================= */}
+      <section className="mx-auto max-w-7xl space-y-12 px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-3xl space-y-3 text-center">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#10B981]">
+            Why NextDoorClinic
+          </span>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white sm:text-4xl">
+            Replace Expensive Agencies with One Subscription
+          </h2>
+          <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
+            Get Found. Get Booked. Grow Your Pharmacy. Stop paying thousands for separate tools.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+          {/* WITHOUT NEXTDOORCLINIC */}
+          <div className="space-y-6 rounded-3xl border border-rose-200 bg-rose-50/50 p-8 dark:border-rose-900/40 dark:bg-rose-950/20">
+            <div className="space-y-1">
+              <span className="rounded-full bg-rose-100 px-3 py-1 text-[10px] font-black uppercase text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                Traditional Approach
+              </span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                Without NextDoorClinic
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
+                Fragmented tools & expensive agency retainer fees
+              </p>
+            </div>
+
+            <ul className="space-y-3 text-xs font-semibold text-slate-700 dark:text-zinc-300">
+              <li className="flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
+                <span>Custom Website Development</span>
+                <span className="font-extrabold text-rose-700 dark:text-rose-400">
+                  £1,500+ one-time
+                </span>
+              </li>
+              <li className="flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
+                <span>Local SEO Agency Retainer</span>
+                <span className="font-extrabold text-rose-700 dark:text-rose-400">
+                  £300 / month
+                </span>
+              </li>
+              <li className="flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
+                <span>Booking System Software</span>
+                <span className="font-extrabold text-rose-700 dark:text-rose-400">£50 / month</span>
+              </li>
+              <li className="flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
+                <span>SMS & Email Marketing Platform</span>
+                <span className="font-extrabold text-rose-700 dark:text-rose-400">£40 / month</span>
+              </li>
+              <li className="flex items-center justify-between pb-1">
+                <span>Web Hosting & Maintenance</span>
+                <span className="font-extrabold text-rose-700 dark:text-rose-400">£20 / month</span>
+              </li>
+            </ul>
+
+            <div className="rounded-2xl border border-rose-200 bg-white p-4 dark:border-rose-900/60 dark:bg-zinc-900">
+              <span className="text-[10px] font-black uppercase text-rose-600 dark:text-rose-400">
+                Total Annual Cost:
+              </span>
+              <div className="text-2xl font-black text-rose-700 dark:text-rose-400">
+                £2,500+ – £5,000+ / year
+              </div>
+            </div>
+          </div>
+
+          {/* WITH NEXTDOORCLINIC */}
+          <div className="relative space-y-6 rounded-3xl border-2 border-[#10B981] bg-emerald-50/70 p-8 shadow-xl dark:bg-emerald-950/30">
+            <span className="shadow-xs absolute -top-3.5 right-6 rounded-full bg-[#10B981] px-4 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+              All-In-One Growth Suite
+            </span>
+
+            <div className="space-y-1">
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                Modern Growth Platform
+              </span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                With NextDoorClinic
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-zinc-300">
+                Everything included in one affordable subscription
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-300 bg-white p-6 dark:border-emerald-800 dark:bg-zinc-900">
+              <div className="flex items-baseline space-x-2">
+                <span className="text-3xl font-black text-slate-900 dark:text-white">$49</span>
+                <span className="text-xs font-bold text-slate-500">/ Month</span>
+                <span className="text-xs font-medium text-slate-400">
+                  or $499 / Year (Save &gt;15%)
+                </span>
+              </div>
+              <p className="mt-1 text-xs font-extrabold text-[#10B981]">
+                ✓ Complete Pharmacy Website + Local SEO + Booking POS + SMS/Email + Marketplace
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Link
+                href="/register-clinic"
+                className="flex items-center justify-center space-x-2 rounded-2xl bg-[#10B981] py-4 text-xs font-black uppercase tracking-wider text-white shadow-lg transition-all hover:bg-emerald-600 active:scale-95"
+              >
+                <span>Start Growing Your Pharmacy →</span>
+              </Link>
+            </div>
           </div>
         </div>
       </section>

@@ -537,3 +537,39 @@ export async function sendUpcomingAppointmentRemindersAction() {
     return { success: false, error: error.message || "Failed to dispatch reminders" };
   }
 }
+
+export async function markAppointmentNoShowAction(appointmentId: string) {
+  try {
+    const session = await getRequiredSession();
+    const app = await db.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { pharmacy: true },
+    });
+
+    if (!app) return { success: false, error: "Appointment not found." };
+
+    const updated = await db.appointment.update({
+      where: { id: appointmentId },
+      data: { status: "NO_SHOW" as any },
+    });
+
+    await db.auditLog.create({
+      data: {
+        pharmacyId: app.pharmacyId,
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: "UPDATE",
+        entityName: "Appointment",
+        entityId: appointmentId,
+        changes: { status: { from: app.status, to: "NO_SHOW" } },
+      },
+    });
+
+    revalidatePath(`/pharmacy/${app.pharmacyId}/appointments`);
+    revalidatePath(`/pharmacy/${app.pharmacyId}`);
+    return { success: true, appointment: updated };
+  } catch (error: any) {
+    console.error("❌ markAppointmentNoShowAction failed:", error);
+    return { success: false, error: error.message || "Failed to mark appointment as no-show." };
+  }
+}

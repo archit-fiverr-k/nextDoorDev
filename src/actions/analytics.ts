@@ -120,6 +120,7 @@ export async function getPharmacyAnalyticsAction(pharmacyId: string) {
     let confirmedCount = 0;
     let completedCount = 0;
     let cancelledCount = 0;
+    let noShowCount = 0;
     let totalRevenue = 0;
     let privateRevenue = 0;
     let nhsRevenue = 0;
@@ -130,8 +131,30 @@ export async function getPharmacyAnalyticsAction(pharmacyId: string) {
 
     let potentialRevenue = 0;
 
+    // Today's real database counters
+    const todayStr = new Date().toISOString().split("T")[0];
+    let todayAppointmentsCount = 0;
+    let todayCompletedCount = 0;
+    let todayRemainingCount = 0;
+    let todayRevenue = 0;
+    const todayPatientIds = new Set<string>();
+
     allAppointments.forEach((app) => {
       const price = Number(app.service?.price || 0);
+      const appDateStr = new Date(app.startTime).toISOString().split("T")[0];
+      const isToday = appDateStr === todayStr;
+
+      if (isToday) {
+        todayAppointmentsCount++;
+        if (app.customerId) todayPatientIds.add(app.customerId);
+        if (app.status === "COMPLETED") {
+          todayCompletedCount++;
+          todayRevenue += price;
+        } else if (app.status === "CONFIRMED" || app.status === "PENDING") {
+          todayRemainingCount++;
+        }
+      }
+
       if (app.status === "PENDING") {
         pendingCount++;
         potentialRevenue += price;
@@ -147,7 +170,12 @@ export async function getPharmacyAnalyticsAction(pharmacyId: string) {
         if (isNhs) nhsRevenue += price;
         else privateRevenue += price;
       }
-      if (app.status === "CANCELLED" || app.status === "REJECTED") cancelledCount++;
+      if (app.status === "CANCELLED" || app.status === "REJECTED") {
+        cancelledCount++;
+      }
+      if (app.status === "NO_SHOW") {
+        noShowCount++;
+      }
 
       const hour = new Date(app.startTime).getHours();
       if (hour < 12) morningSlots++;
@@ -277,6 +305,12 @@ export async function getPharmacyAnalyticsAction(pharmacyId: string) {
         confirmedCount,
         completedCount,
         cancelledCount,
+        noShowCount,
+        todayRevenue,
+        todayAppointmentsCount,
+        todayCompletedCount,
+        todayRemainingCount,
+        todayPatientsCount: todayPatientIds.size,
         attendanceRate,
         totalPatients,
         totalRevenue,

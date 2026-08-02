@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import { getRequiredSession } from "@/lib/session";
-import { ProfileForm } from "./profile-form";
+import { ProfileBuilderView } from "./profile-builder-view";
 
 interface PharmacyProfilePageProps {
   params: {
@@ -56,9 +56,5 @@ export default async function PharmacyProfilePage({ params }: PharmacyProfilePag
     redirect("/");
   }
 
-  return (
-    <div className="select-text space-y-6">
-      <ProfileForm pharmacy={JSON.parse(JSON.stringify(pharmacy))} />
-    </div>
-  );
+  return <ProfileBuilderView pharmacy={JSON.parse(JSON.stringify(pharmacy))} />;
 }

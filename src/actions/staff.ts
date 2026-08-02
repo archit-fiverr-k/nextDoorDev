@@ -3,6 +3,11 @@
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
+import { formatErrorMessage } from "@/lib/error-utils";
+
+function isUuid(str: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+}
 
 export async function getPharmacyStaffAction(pharmacyId: string) {
   try {
@@ -56,6 +61,18 @@ export async function createStaffMemberAction(data: {
       return { success: false, error: "Practitioner name and email are required" };
     }
 
+    // Resolve target pharmacy ID by UUID or slug
+    const isParamUuid = isUuid(data.pharmacyId);
+    const pharmacy = await db.pharmacy.findFirst({
+      where: isParamUuid
+        ? { OR: [{ id: data.pharmacyId }, { slug: data.pharmacyId }] }
+        : { slug: data.pharmacyId },
+    });
+
+    if (!pharmacy) {
+      return { success: false, error: "Pharmacy workspace not found." };
+    }
+
     const cleanEmail = data.email.trim().toLowerCase();
     const existing = await db.staff.findUnique({ where: { email: cleanEmail } });
     if (existing) {
@@ -67,7 +84,7 @@ export async function createStaffMemberAction(data: {
 
     const member = await db.staff.create({
       data: {
-        pharmacyId: data.pharmacyId,
+        pharmacyId: pharmacy.id,
         name: data.name.trim(),
         email: cleanEmail,
         passwordHash,
@@ -88,10 +105,14 @@ export async function createStaffMemberAction(data: {
     });
 
     revalidatePath(`/admin/calendar`);
+    revalidatePath(`/pharmacy/${pharmacy.slug || pharmacy.id}/staff`);
     return { success: true, data: member };
   } catch (error: any) {
     console.error("❌ createStaffMemberAction error:", error);
-    return { success: false, error: "Failed to create staff practitioner" };
+    return {
+      success: false,
+      error: formatErrorMessage(error) || "Failed to create staff practitioner",
+    };
   }
 }
 

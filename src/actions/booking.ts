@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { BookingEngine } from "@/lib/booking-service";
 import { Resend } from "resend";
 import {
@@ -16,8 +17,12 @@ import { SignJWT, jwtVerify } from "jose";
 import { localDateTimeToUTC } from "@/lib/timezone";
 import { sendVerifyOtp, checkVerifyOtp, sendSMS, sendWhatsapp } from "@/lib/twilio";
 import { isValidUKOrDevPhone } from "@/lib/phone-validation";
-
 import { sendEmail } from "@/lib/email";
+import { SlotConflictError } from "@/lib/errors";
+import { formatErrorMessage } from "@/lib/error-utils";
+import { getCachedIdempotencyResult, setCachedIdempotencyResult } from "@/lib/idempotency";
+import { enqueueBookingNotification } from "@/lib/notifications";
+import { findOrCreateMergedCustomer } from "@/actions/customer-merge";
 
 async function sendAllBookingNotifications(params: {
   patientName: string;
@@ -211,6 +216,8 @@ export async function getAvailableSlotsAction(
         startTime: s.startTime.toISOString(),
         endTime: s.endTime.toISOString(),
         formattedTime: s.formattedTime,
+        isAvailable: s.isAvailable,
+        reason: s.reason,
       })),
     };
   } catch (error) {
@@ -448,75 +455,57 @@ export async function verifyOtpAndCompleteBookingAction(data: {
       ? `${data.addressLine1}${data.addressLine2 ? `, ${data.addressLine2}` : ""}, ${data.townCity || ""}, ${data.postcode || ""}`
       : undefined;
 
-    const result = await db.$transaction(async (tx) => {
-      let customer = await tx.customer.findFirst({
-        where: {
-          OR: [{ phone: cleanPhone }, { email: data.email }],
-        },
-      });
-
-      if (!customer) {
-        customer = await tx.customer.create({
-          data: {
-            pharmacyId: data.pharmacyId,
-            firstName: data.firstName,
-            lastName: data.lastName,
-            email: data.email,
-            phone: cleanPhone,
-            address: fullAddress,
-            dateOfBirth: data.dob ? new Date(data.dob) : undefined,
-            smsNotifications: true,
-            emailNotifications: true,
-          },
+    const result = await db.$transaction(
+      async (tx) => {
+        const customer = await findOrCreateMergedCustomer(tx, {
+          pharmacyId: data.pharmacyId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: cleanPhone,
+          address: fullAddress,
+          dob: data.dob ? new Date(data.dob) : undefined,
         });
-      } else {
-        customer = await tx.customer.update({
-          where: { id: customer.id },
-          data: {
-            firstName: data.firstName,
-            lastName: data.lastName,
-            phone: cleanPhone,
-            email: data.email,
-            ...(fullAddress ? { address: fullAddress } : {}),
-            ...(data.dob ? { dateOfBirth: new Date(data.dob) } : {}),
-          },
-        });
-      }
 
-      const createdAppointments = [];
-      let currentStart = startTimeUTC;
+        const createdAppointments = [];
+        let currentStart = startTimeUTC;
 
-      for (const svc of services) {
-        const svcEnd = new Date(currentStart.getTime() + svc.duration * 60 * 1000);
-        const appt = await tx.appointment.create({
+        for (const svc of services) {
+          const svcEnd = new Date(currentStart.getTime() + svc.duration * 60 * 1000);
+          const appt = await tx.appointment.create({
+            data: {
+              pharmacyId: data.pharmacyId,
+              customerId: customer.id,
+              serviceId: svc.id,
+              startTime: currentStart,
+              endTime: svcEnd,
+              status: "PENDING",
+              notes: data.notes,
+            },
+          });
+          createdAppointments.push(appt);
+          currentStart = svcEnd;
+        }
+
+        const firstAppt = createdAppointments[0];
+
+        await tx.patientNotification.create({
           data: {
-            pharmacyId: data.pharmacyId,
             customerId: customer.id,
-            serviceId: svc.id,
-            startTime: currentStart,
-            endTime: svcEnd,
-            status: "PENDING",
-            notes: data.notes,
+            type: "BOOKING_CONFIRMED",
+            title: "Booking Request Submitted",
+            message: `Your appointment request for ${services.map((s) => s.name).join(", ")} at ${pharmacy.name} has been submitted and is awaiting pharmacy approval.`,
+            link: `/patient/appointments/${firstAppt.id}`,
           },
         });
-        createdAppointments.push(appt);
-        currentStart = svcEnd;
+
+        return { customer, appointment: firstAppt, services, pharmacy };
+      },
+      {
+        maxWait: 10000,
+        timeout: 25000,
       }
-
-      const firstAppt = createdAppointments[0];
-
-      await tx.patientNotification.create({
-        data: {
-          customerId: customer.id,
-          type: "BOOKING_CONFIRMED",
-          title: "Booking Request Submitted",
-          message: `Your appointment request for ${services.map((s) => s.name).join(", ")} at ${pharmacy.name} has been submitted and is awaiting pharmacy approval.`,
-          link: `/patient/appointments/${firstAppt.id}`,
-        },
-      });
-
-      return { customer, appointment: firstAppt, services, pharmacy };
-    });
+    );
 
     const referenceCode = `NDC-${result.appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
     const manageToken = await generateManageToken(result.appointment.id, result.customer.email);
@@ -610,208 +599,223 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
     const addressNote = `Patient address: ${addressValue}`;
     const combinedNotes = data.notes ? `${data.notes}\n---\n${addressNote}` : addressNote;
 
-    const transactionResult = await db.$transaction(async (tx) => {
-      // 1. Check Slot Availability
-      const dateStr = startTimeUTC.toLocaleDateString("en-CA", { timeZone: "Europe/London" });
-      const targetDate = new Date(dateStr);
-      const isBlocked = await tx.blockedDate.findFirst({
-        where: {
-          pharmacyId: data.pharmacyId,
-          date: targetDate,
-        },
-      });
-      if (isBlocked) {
-        throw new Error("SLOT_TAKEN");
-      }
-
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Europe/London",
-        weekday: "short",
-      });
-      const weekdayShort = formatter.format(startTimeUTC);
-      const shortNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const dayIndex = shortNames.indexOf(weekdayShort);
-
-      const availability = await tx.availability.findUnique({
-        where: {
-          pharmacyId_dayOfWeek: {
+    const transactionResult = await db.$transaction(
+      async (tx) => {
+        // 1. Check Slot Availability
+        const dateStr = startTimeUTC.toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+        const targetDate = new Date(dateStr);
+        const isBlocked = await tx.blockedDate.findFirst({
+          where: {
             pharmacyId: data.pharmacyId,
-            dayOfWeek: dayIndex,
+            date: targetDate,
           },
-        },
-      });
-      if (!availability) {
-        throw new Error("SLOT_TAKEN");
-      }
-
-      const { openTime, closeTime } = availability;
-      const openUTC = localDateTimeToUTC(dateStr, openTime, "Europe/London");
-      const closeUTC = localDateTimeToUTC(dateStr, closeTime, "Europe/London");
-
-      if (startTimeUTC.getTime() < openUTC.getTime() || endTimeUTC.getTime() > closeUTC.getTime()) {
-        throw new Error("SLOT_TAKEN");
-      }
-
-      const overlap = await tx.appointment.findFirst({
-        where: {
-          pharmacyId: data.pharmacyId,
-          status: { not: "CANCELLED" },
-          startTime: { lt: endTimeUTC },
-          endTime: { gt: startTimeUTC },
-        },
-      });
-      if (overlap) {
-        throw new Error("SLOT_TAKEN");
-      }
-
-      // 2. Find or Create/Update Customer
-      let customer = await tx.customer.findFirst({
-        where: { email: data.email, passwordHash: { not: null } },
-      });
-
-      if (!customer) {
-        customer = await tx.customer.findFirst({
-          where: { email: data.email },
         });
-      }
-
-      let isNewAccount = false;
-      let verificationToken: string | null = null;
-      let verificationExpiry: Date | null = null;
-
-      if (!customer) {
-        isNewAccount = true;
-        let passwordHash: string | null = null;
-        if (data.password) {
-          passwordHash = hashPassword(data.password);
-          verificationToken = await generateVerificationToken(data.email);
-          verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        if (isBlocked) {
+          throw new SlotConflictError("This clinic date is currently blocked for bookings.");
         }
 
-        customer = await tx.customer.create({
-          data: {
-            firstName: data.firstName,
-            lastName: data.lastName,
-            email: data.email,
-            phone: data.mobile,
-            address: addressValue,
-            passwordHash,
-            emailVerified: false,
-            emailVerificationToken: verificationToken,
-            emailVerificationExpiry: verificationExpiry,
-          },
+        const formatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Europe/London",
+          weekday: "short",
         });
-      } else {
-        // If customer already has a password set and password is provided, verify it
-        if (customer.passwordHash && data.password) {
-          const isValidPassword = verifyPassword(data.password, customer.passwordHash);
-          if (!isValidPassword) {
-            throw new Error("INVALID_PASSWORD");
-          }
-        }
+        const weekdayShort = formatter.format(startTimeUTC);
+        const shortNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const dayIndex = shortNames.indexOf(weekdayShort);
 
-        const updateData: any = {
-          firstName: data.firstName,
-          lastName: data.lastName,
-          phone: data.mobile,
-          address: addressValue,
-        };
-
-        if (data.password && !customer.passwordHash) {
-          isNewAccount = true;
-          updateData.passwordHash = hashPassword(data.password);
-          verificationToken = await generateVerificationToken(data.email);
-          verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          updateData.emailVerified = false;
-          updateData.emailVerificationToken = verificationToken;
-          updateData.emailVerificationExpiry = verificationExpiry;
-        }
-
-        customer = await tx.customer.update({
-          where: { id: customer.id },
-          data: updateData,
-        });
-      }
-
-      // 3. Create chained appointments
-      let currentStartTime = startTimeUTC;
-      const createdAppointments = [];
-
-      for (const svc of services) {
-        const svcEndTime = new Date(currentStartTime.getTime() + svc.duration * 60 * 1000);
-        const appointment = await tx.appointment.create({
-          data: {
-            pharmacyId: data.pharmacyId,
-            customerId: customer.id,
-            serviceId: svc.id,
-            startTime: currentStartTime,
-            endTime: svcEndTime,
-            status: "PENDING",
-            notes: combinedNotes,
-          },
-        });
-        createdAppointments.push(appointment);
-
-        await tx.patientNotification.create({
-          data: {
-            customerId: customer.id,
-            type: "BOOKING_CONFIRMED",
-            title: "Booking Request Submitted",
-            message: `Your appointment request for ${svc.name} at ${pharmacy.name} has been submitted and is awaiting pharmacy owner approval.`,
-            link: `/patient/appointments/${appointment.id}`,
-          },
-        });
-
-        await tx.auditLog.create({
-          data: {
-            pharmacyId: data.pharmacyId,
-            action: "CREATE",
-            entityName: "Appointment",
-            entityId: appointment.id,
-            changes: {
-              customerName: `${data.firstName} ${data.lastName}`,
-              serviceName: svc.name,
-              startTime: appointment.startTime.toISOString(),
-              source: "progressive_booking_wizard",
+        const availability = await tx.availability.findUnique({
+          where: {
+            pharmacyId_dayOfWeek: {
+              pharmacyId: data.pharmacyId,
+              dayOfWeek: dayIndex,
             },
           },
         });
+        if (!availability) {
+          throw new SlotConflictError("The clinic is closed on this day.");
+        }
 
-        currentStartTime = svcEndTime;
+        const { openTime, closeTime } = availability;
+        const openUTC = localDateTimeToUTC(dateStr, openTime, "Europe/London");
+        const closeUTC = localDateTimeToUTC(dateStr, closeTime, "Europe/London");
+
+        if (
+          startTimeUTC.getTime() < openUTC.getTime() ||
+          endTimeUTC.getTime() > closeUTC.getTime()
+        ) {
+          throw new SlotConflictError("This time slot falls outside opening hours.");
+        }
+
+        const overlap = await tx.appointment.findFirst({
+          where: {
+            pharmacyId: data.pharmacyId,
+            status: { notIn: ["CANCELLED", "REJECTED"] },
+            startTime: { lt: endTimeUTC },
+            endTime: { gt: startTimeUTC },
+          },
+        });
+        if (overlap) {
+          throw new SlotConflictError(
+            "This time slot is no longer available. Please select another convenient time slot."
+          );
+        }
+
+        // 2. Find or Create/Update Customer
+        let customer = await tx.customer.findFirst({
+          where: { email: data.email, passwordHash: { not: null } },
+        });
+
+        if (!customer) {
+          customer = await tx.customer.findFirst({
+            where: { email: data.email },
+          });
+        }
+
+        let isNewAccount = false;
+        let verificationToken: string | null = null;
+        let verificationExpiry: Date | null = null;
+
+        if (!customer) {
+          isNewAccount = true;
+          let passwordHash: string | null = null;
+          if (data.password) {
+            passwordHash = hashPassword(data.password);
+            verificationToken = await generateVerificationToken(data.email);
+            verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          }
+
+          customer = await tx.customer.create({
+            data: {
+              firstName: data.firstName,
+              lastName: data.lastName,
+              email: data.email,
+              phone: data.mobile,
+              address: addressValue,
+              passwordHash,
+              emailVerified: false,
+              emailVerificationToken: verificationToken,
+              emailVerificationExpiry: verificationExpiry,
+            },
+          });
+        } else {
+          // If customer already has a password set and password is provided, verify it
+          if (customer.passwordHash && data.password) {
+            const isValidPassword = verifyPassword(data.password, customer.passwordHash);
+            if (!isValidPassword) {
+              throw new Error("INVALID_PASSWORD");
+            }
+          }
+
+          const updateData: any = {
+            firstName: data.firstName,
+            lastName: data.lastName,
+            phone: data.mobile,
+            address: addressValue,
+          };
+
+          if (data.password && !customer.passwordHash) {
+            isNewAccount = true;
+            updateData.passwordHash = hashPassword(data.password);
+            verificationToken = await generateVerificationToken(data.email);
+            verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            updateData.emailVerified = false;
+            updateData.emailVerificationToken = verificationToken;
+            updateData.emailVerificationExpiry = verificationExpiry;
+          }
+
+          customer = await tx.customer.update({
+            where: { id: customer.id },
+            data: updateData,
+          });
+        }
+
+        // 3. Create chained appointments
+        let currentStartTime = startTimeUTC;
+        const createdAppointments = [];
+
+        for (const svc of services) {
+          const svcEndTime = new Date(currentStartTime.getTime() + svc.duration * 60 * 1000);
+          const appointment = await tx.appointment.create({
+            data: {
+              pharmacyId: data.pharmacyId,
+              customerId: customer.id,
+              serviceId: svc.id,
+              startTime: currentStartTime,
+              endTime: svcEndTime,
+              status: "PENDING",
+              notes: combinedNotes,
+            },
+          });
+          createdAppointments.push(appointment);
+
+          await tx.patientNotification.create({
+            data: {
+              customerId: customer.id,
+              type: "BOOKING_CONFIRMED",
+              title: "Booking Request Submitted",
+              message: `Your appointment request for ${svc.name} at ${pharmacy.name} has been submitted and is awaiting pharmacy owner approval.`,
+              link: `/patient/appointments/${appointment.id}`,
+            },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              pharmacyId: data.pharmacyId,
+              action: "CREATE",
+              entityName: "Appointment",
+              entityId: appointment.id,
+              changes: {
+                customerName: `${data.firstName} ${data.lastName}`,
+                serviceName: svc.name,
+                startTime: appointment.startTime.toISOString(),
+                source: "progressive_booking_wizard",
+              },
+            },
+          });
+
+          currentStartTime = svcEndTime;
+        }
+
+        const firstAppointment = createdAppointments[0];
+
+        const servicesString = services.map((s) => s.name).join(", ");
+        const confirmationLog = await tx.communicationsLog.create({
+          data: {
+            pharmacyId: data.pharmacyId,
+            customerId: customer.id,
+            type: "EMAIL",
+            subject: "Booking Request Received - NextDoorClinic",
+            content: `Booking request generated for appointment IDs: ${createdAppointments.map((a) => a.id).join(", ")}. Services: ${servicesString}.`,
+            recipient: customer.email,
+            status: "PENDING",
+          },
+        });
+
+        return {
+          customer,
+          appointment: firstAppointment,
+          isNewAccount,
+          verificationToken,
+          confirmationLogId: confirmationLog.id,
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 10000,
+        timeout: 25000,
       }
-
-      const firstAppointment = createdAppointments[0];
-
-      const servicesString = services.map((s) => s.name).join(", ");
-      const confirmationLog = await tx.communicationsLog.create({
-        data: {
-          pharmacyId: data.pharmacyId,
-          customerId: customer.id,
-          type: "EMAIL",
-          subject: "Booking Request Received - NextDoorClinic",
-          content: `Booking request generated for appointment IDs: ${createdAppointments.map((a) => a.id).join(", ")}. Services: ${servicesString}.`,
-          recipient: customer.email,
-          status: "PENDING",
-        },
-      });
-
-      return {
-        customer,
-        appointment: firstAppointment,
-        isNewAccount,
-        verificationToken,
-        confirmationLogId: confirmationLog.id,
-      };
-    });
+    );
 
     const referenceCode = `NDC-${transactionResult.appointment.id.replace(/-/g, "").substring(0, 6).toUpperCase()}`;
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const manageUrl = `${appBaseUrl}/b/${referenceCode}`;
 
-    await sendAllBookingNotifications({
+    // Non-blocking outbox notification dispatch
+    enqueueBookingNotification({
+      appointmentId: transactionResult.appointment.id,
       patientName: `${data.firstName} ${data.lastName}`,
       patientEmail: data.email,
       patientPhone: data.mobile,
+      pharmacyId: data.pharmacyId,
       pharmacyName: pharmacy.name,
       pharmacyEmail: pharmacy.email,
       pharmacySlug: pharmacy.slug,
@@ -843,7 +847,7 @@ export async function createBookingDirectAction(data: DirectBookingInput) {
       };
     }
     console.error("❌ createBookingDirectAction failed:", error);
-    return { success: false, error: "An unexpected error occurred. Please try again." };
+    return { success: false, error: formatErrorMessage(error) };
   }
 }
 

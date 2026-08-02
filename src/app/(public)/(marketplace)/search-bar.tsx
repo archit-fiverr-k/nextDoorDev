@@ -198,7 +198,7 @@ export function SearchBar({
     if (val.trim()) {
       setLoading(true);
       setIsOpen(true);
-      debounceTimerRef.current = setTimeout(() => fetchLocationSuggestions(val), 200);
+      debounceTimerRef.current = setTimeout(() => fetchLocationSuggestions(val), 100);
     } else {
       setSuggestions([]);
       setIsOpen(false);
@@ -210,11 +210,33 @@ export function SearchBar({
     setService(val);
     setServiceHighlightedIndex(-1);
 
+    // Instant local alias matching (0ms latency response)
+    const clean = val.trim().toLowerCase();
+    if (clean.length >= 1) {
+      const aliasMatches: any[] = [];
+      Object.keys(MEDICAL_SYNONYM_MAP).forEach((key) => {
+        if (clean.length >= 2 && (key.includes(clean) || clean.includes(key))) {
+          const mapped = MEDICAL_SYNONYM_MAP[key];
+          if (!aliasMatches.some((m) => m.name === mapped.name)) {
+            aliasMatches.push({
+              name: mapped.name,
+              category: mapped.category,
+              isAlias: true,
+            });
+          }
+        }
+      });
+      if (aliasMatches.length > 0) {
+        setServiceSuggestions(aliasMatches);
+        setServiceIsOpen(true);
+      }
+    }
+
     if (serviceDebounceTimerRef.current) clearTimeout(serviceDebounceTimerRef.current);
     if (val.trim()) {
       setServiceLoading(true);
       setServiceIsOpen(true);
-      serviceDebounceTimerRef.current = setTimeout(() => fetchServiceSuggestions(val), 150);
+      serviceDebounceTimerRef.current = setTimeout(() => fetchServiceSuggestions(val), 100);
     } else {
       setServiceSuggestions([]);
       setServiceIsOpen(false);
@@ -304,10 +326,10 @@ export function SearchBar({
               )}
             </div>
 
-            {/* COMPACT SERVICE AUTOCOMPLETE DROPDOWN (Google/Apple Style) */}
+            {/* COMPACT SERVICE AUTOCOMPLETE DROPDOWN (Scrollable & Lightweight) */}
             {serviceIsOpen && serviceSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              <div className="absolute left-0 top-full z-50 mt-2 max-h-[300px] w-full min-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1.5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:min-w-[400px]">
+                <div className="sticky top-0 bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:bg-zinc-900">
                   Services & Treatments
                 </div>
                 {serviceSuggestions.map((item, idx) => (
@@ -318,18 +340,16 @@ export function SearchBar({
                       setServiceIsOpen(false);
                       executeSearch(location, item.name);
                     }}
-                    className="flex min-h-[44px] cursor-pointer items-center justify-between px-3.5 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    className="group flex cursor-pointer items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   >
                     <div className="flex min-w-0 items-center space-x-2.5">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-[#10B981] dark:bg-emerald-950/60">
-                        <Stethoscope className="h-3.5 w-3.5" />
-                      </div>
-                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                      <Stethoscope className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-[#10B981]" />
+                      <span className="truncate text-xs font-medium text-slate-900 dark:text-white">
                         {item.name}
                       </span>
                     </div>
 
-                    <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-extrabold text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
+                    <span className="ml-2 shrink-0 text-[10px] font-medium text-slate-400 dark:text-zinc-500">
                       {item.category || "Treatment"}
                     </span>
                   </div>
@@ -373,13 +393,13 @@ export function SearchBar({
             )}
           </div>
 
-          {/* COMPACT LOCATION AUTOCOMPLETE DROPDOWN */}
+          {/* COMPACT LOCATION AUTOCOMPLETE DROPDOWN (Scrollable & Lightweight) */}
           {isOpen && (
-            <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="absolute left-0 top-full z-50 mt-2 max-h-[300px] w-full min-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1.5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:min-w-[400px]">
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
-                className="flex min-h-[44px] w-full items-center space-x-2.5 px-3.5 py-2.5 text-xs font-bold text-[#10B981] hover:bg-emerald-50/60 dark:hover:bg-emerald-950/40"
+                className="flex w-full items-center space-x-2.5 px-3.5 py-2.5 text-xs font-bold text-[#10B981] hover:bg-emerald-50/60 dark:hover:bg-emerald-950/40"
               >
                 {geoLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -391,7 +411,7 @@ export function SearchBar({
 
               {suggestions.length > 0 && (
                 <>
-                  <div className="mt-1 border-t border-slate-100 px-3 py-1 pt-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:border-zinc-800">
+                  <div className="sticky top-0 bg-white px-3 py-1 pt-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:border-zinc-800 dark:bg-zinc-900">
                     Matching Locations
                   </div>
                   {suggestions.map((sug, idx) => {
@@ -404,24 +424,17 @@ export function SearchBar({
                           setIsOpen(false);
                           executeSearch(locName, service);
                         }}
-                        className="flex min-h-[44px] cursor-pointer items-center justify-between px-3.5 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800"
+                        className="group flex cursor-pointer items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
                       >
                         <div className="flex min-w-0 items-center space-x-2.5">
-                          <MapPin className="h-4 w-4 shrink-0 text-[#10B981]" />
-                          <div>
-                            <span className="block truncate text-xs font-bold text-slate-900 dark:text-white">
-                              {locName}
-                            </span>
-                            {typeof sug === "object" && sug.earliestAppointment && (
-                              <span className="block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                ⚡ {sug.earliestAppointment}
-                              </span>
-                            )}
-                          </div>
+                          <MapPin className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-[#10B981]" />
+                          <span className="truncate text-xs font-medium text-slate-900 dark:text-white">
+                            {locName}
+                          </span>
                         </div>
 
                         {typeof sug === "object" && sug.statusText && (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-extrabold text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                          <span className="ml-2 shrink-0 text-[10px] font-medium text-slate-400 dark:text-zinc-500">
                             {sug.statusText}
                           </span>
                         )}

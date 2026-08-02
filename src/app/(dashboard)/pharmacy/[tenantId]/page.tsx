@@ -17,7 +17,7 @@ function isUuid(str: string): boolean {
 export default async function PharmacyDashboardPage({ params }: PharmacyDashboardPageProps) {
   const isParamUuid = isUuid(params.tenantId);
 
-  // 1. Fetch pharmacy details by ID or Slug
+  // 1. Fetch pharmacy details by ID or Slug including onboarding setup check
   const pharmacy = await db.pharmacy.findFirst({
     where: isParamUuid
       ? { OR: [{ id: params.tenantId }, { slug: params.tenantId }] }
@@ -31,6 +31,11 @@ export default async function PharmacyDashboardPage({ params }: PharmacyDashboar
       address: true,
       city: true,
       postcode: true,
+      logoUrl: true,
+      isFirstLogin: true,
+      availability: {
+        select: { id: true },
+      },
     },
   });
 
@@ -39,6 +44,7 @@ export default async function PharmacyDashboardPage({ params }: PharmacyDashboar
   }
 
   const pharmacyId = pharmacy.id;
+  const showFirstTimeSetup = pharmacy.isFirstLogin || pharmacy.availability.length === 0;
 
   // 2. Compute today's date boundaries
   const now = new Date();
@@ -101,6 +107,7 @@ export default async function PharmacyDashboardPage({ params }: PharmacyDashboar
   return (
     <PharmacyDashboardView
       pharmacy={pharmacy}
+      showFirstTimeSetup={showFirstTimeSetup}
       todayAppointments={JSON.parse(JSON.stringify(todayAppointments))}
       pendingAppointments={JSON.parse(JSON.stringify(pendingAppointments))}
       upcomingAppointments={JSON.parse(JSON.stringify(upcomingAppointments))}

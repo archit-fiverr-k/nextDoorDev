@@ -9,7 +9,7 @@ const envSchema = z.object({
     .string()
     .min(15, "AUTH_SECRET must be at least 15 characters")
     .default("super-secret-auth-key-for-local-development-only"),
-  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.string().url().default("https://next-door-dev.vercel.app"),
   NEXT_PUBLIC_SUPABASE_URL: z.string().default("https://qwivfvyuninzmhifqwxp.supabase.co"),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z
     .string()

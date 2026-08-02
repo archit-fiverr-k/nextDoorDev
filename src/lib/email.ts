@@ -331,6 +331,8 @@ export async function sendProviderRegistrationNotification(details: {
   }
 }
 
+import { getAppBaseUrl } from "@/lib/url";
+
 export async function sendPlatformAdminCredentialsEmail(
   email: string,
   name: string,
@@ -338,7 +340,8 @@ export async function sendPlatformAdminCredentialsEmail(
   tempPassword: string,
   permissions: string[]
 ) {
-  const loginUrl = `${env.NEXT_PUBLIC_APP_URL}/login`;
+  const baseUrl = getAppBaseUrl();
+  const loginUrl = `${baseUrl}/login`;
   const accessListHtml = permissions.map((p) => `<li>${p}</li>`).join("");
 
   const html = `
@@ -390,10 +393,13 @@ export async function sendEmailVerificationEmail(
   email: string,
   details: { patientName: string; token: string }
 ) {
+  const baseUrl = getAppBaseUrl();
+  const verifyUrl = `${baseUrl}/verify-email?token=${details.token}`;
+
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
-        <img src="${env.NEXT_PUBLIC_APP_URL}/assets/header-logo.png" alt="NextDoorClinic" style="height: 40px; object-fit: contain;" />
+        <img src="${baseUrl}/assets/header-logo.png" alt="NextDoorClinic" style="height: 40px; object-fit: contain;" />
       </div>
       <h2 style="color: #0f172a; margin-top: 24px; margin-bottom: 16px;">Verify your email address</h2>
       <p style="color: #475569; font-size: 14px; line-height: 24px;">
@@ -403,12 +409,12 @@ export async function sendEmailVerificationEmail(
         Please verify your email address to complete your account registration and secure your patient portal access.
       </p>
       <div style="text-align: center; margin: 28px 0;">
-        <a href="${env.NEXT_PUBLIC_APP_URL}/verify-email?token=${details.token}" style="background-color: #10B981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">Verify Email Address</a>
+        <a href="${verifyUrl}" style="background-color: #10B981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">Verify Email Address</a>
       </div>
       <p style="color: #64748b; font-size: 13px; line-height: 20px;">
         Alternatively, you can copy and paste the following link into your browser:
         <br />
-        <a href="${env.NEXT_PUBLIC_APP_URL}/verify-email?token=${details.token}" style="color: #10B981; word-break: break-all;">${env.NEXT_PUBLIC_APP_URL}/verify-email?token=${details.token}</a>
+        <a href="${verifyUrl}" style="color: #10B981; word-break: break-all;">${verifyUrl}</a>
       </p>
       <p style="color: #94a3b8; font-size: 12px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center;">
         This link will expire in 24 hours. If you did not request this booking, you can safely ignore this email.

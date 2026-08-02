@@ -1,10 +1,12 @@
 import { db } from "./db";
 import { localDateTimeToUTC, formatUTCInTimezone } from "./timezone";
 
-interface AvailableSlot {
+export interface AvailableSlot {
   startTime: Date;
   endTime: Date;
   formattedTime: string;
+  isAvailable: boolean;
+  reason?: "BOOKED" | "PAST" | "CLOSED";
 }
 
 /**
@@ -13,7 +15,7 @@ interface AvailableSlot {
  */
 export class BookingEngine {
   /**
-   * Retrieves all available scheduling slots for a service on a given date.
+   * Retrieves all scheduling slots for a service on a given date, including availability status.
    */
   static async getAvailableSlots(
     pharmacyId: string,
@@ -65,8 +67,7 @@ export class BookingEngine {
 
     const { openTime, closeTime } = availability;
 
-    // 5. Generate Candidate Slots (15-minute intervals)
-    // Parse open and close times to minutes
+    // 5. Generate Candidate Slots (30-minute increments by default)
     const [openH, openM] = openTime.split(":").map(Number);
     const [closeH, closeM] = closeTime.split(":").map(Number);
 
@@ -75,8 +76,8 @@ export class BookingEngine {
 
     const candidateSlots: { startMin: number; endMin: number }[] = [];
 
-    // Loop at 15-minute increments
-    for (let currentMin = openMin; currentMin + duration <= closeMin; currentMin += 15) {
+    // Loop at 30-minute increments
+    for (let currentMin = openMin; currentMin + duration <= closeMin; currentMin += 30) {
       candidateSlots.push({
         startMin: currentMin,
         endMin: currentMin + duration,
@@ -87,8 +88,7 @@ export class BookingEngine {
       return [];
     }
 
-    // 6. Fetch Existing Appointments for the Date to avoid double booking
-    // Query range in UTC
+    // 6. Fetch Existing Appointments for the Date to check conflicts across all services
     const startOfDayUTC = localDateTimeToUTC(dateStr, "00:00", timezone);
     const endOfDayUTC = localDateTimeToUTC(dateStr, "23:59", timezone);
 
@@ -97,7 +97,7 @@ export class BookingEngine {
         pharmacyId,
         startTime: { gte: startOfDayUTC },
         endTime: { lte: endOfDayUTC },
-        status: { not: "CANCELLED" },
+        status: { notIn: ["CANCELLED", "REJECTED"] },
       },
       select: {
         startTime: true,
@@ -108,23 +108,19 @@ export class BookingEngine {
     const now = new Date();
     const availableSlots: AvailableSlot[] = [];
 
-    // 7. Validate and filter candidates
+    // 7. Validate and tag candidates
     for (const slot of candidateSlots) {
-      // Format back to HH:MM strings
       const startH = Math.floor(slot.startMin / 60);
       const startM = slot.startMin % 60;
       const startStr = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}`;
 
-      // Convert local slot times to UTC Dates
       const slotStartUTC = localDateTimeToUTC(dateStr, startStr, timezone);
       const slotEndUTC = new Date(slotStartUTC.getTime() + duration * 60 * 1000);
 
-      // Discard past slots
-      if (slotStartUTC.getTime() <= now.getTime()) {
-        continue;
-      }
+      // Check if slot is in the past
+      const isPast = slotStartUTC.getTime() <= now.getTime();
 
-      // Check overlap conflicts
+      // Check overlap conflicts with ANY appointment at pharmacy
       let hasOverlap = false;
       for (const app of appointments) {
         if (
@@ -136,13 +132,16 @@ export class BookingEngine {
         }
       }
 
-      if (!hasOverlap) {
-        availableSlots.push({
-          startTime: slotStartUTC,
-          endTime: slotEndUTC,
-          formattedTime: formatUTCInTimezone(slotStartUTC, timezone, "time"),
-        });
-      }
+      const isAvailable = !isPast && !hasOverlap;
+      const reason = isPast ? "PAST" : hasOverlap ? "BOOKED" : undefined;
+
+      availableSlots.push({
+        startTime: slotStartUTC,
+        endTime: slotEndUTC,
+        formattedTime: formatUTCInTimezone(slotStartUTC, timezone, "time"),
+        isAvailable,
+        reason,
+      });
     }
 
     return availableSlots;
