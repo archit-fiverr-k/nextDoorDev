@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { BookingWizard } from "./booking-wizard";
+import { PharmacyServicesPage } from "@/components/pharmacy/pharmacy-services-page";
 import { auth } from "@/lib/auth";
 import { Metadata } from "next";
 
@@ -189,7 +190,7 @@ export default async function PublicBookingPage({ params, searchParams }: Public
   }
 
   return (
-    <BookingWizard
+    <PharmacyServicesPage
       pharmacy={sanitizedPharmacy}
       services={sanitizedServices}
       categories={sanitizedCategories}
